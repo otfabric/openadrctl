@@ -149,6 +149,7 @@ by --count, --duration or an interrupt.`,
 	}
 	query := eventQuery(cmd)
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		c.use()
 		return runner.RunStream(cmd, c.Format, func() error {
 			if err := c.Validate(); err != nil {
 				return err
@@ -185,7 +186,11 @@ func (c *watchConfig) poll(ctx context.Context, a *api, query func(client.Page) 
 		var order []string
 		var failed error
 		for e, err := range client.Each(sctx, func(ctx context.Context, p client.Page) ([]openadr.Event, error) {
-			return pick(a).Events(ctx, query(p))
+			q := query(p)
+			if err := retargetQuery(c.Version(), &q); err != nil {
+				return nil, err
+			}
+			return pick(a).Events(ctx, q)
 		}) {
 			if err != nil {
 				failed = err

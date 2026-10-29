@@ -67,7 +67,7 @@ lint: ## Run golangci-lint.
 
 .PHONY: lint-ci
 lint-ci: ## Run golangci-lint for CI (stricter).
-	golangci-lint run --out-format=colored-line-number ./...
+	golangci-lint run --output.text.path=stdout --output.text.colors ./...
 
 .PHONY: fmt
 fmt: ## Format code.

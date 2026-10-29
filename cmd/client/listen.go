@@ -101,8 +101,20 @@ an interrupt, 4 when the WebSocket or broker cannot be reached at the start.`,
 }
 
 func (c *listenConfig) validate(sel *selection) error {
+	c.use()
 	if err := c.Validate(); err != nil {
 		return err
+	}
+	if c.Version() == openadr.Version301 {
+		if c.Via != "webhook" {
+			return errs.InvalidInput(errs.CodeInvalidFlagCombination, "OpenADR 3.0.1 notifies by webhook only: --via webhook", nil)
+		}
+		if c.Program == "" {
+			return errs.InvalidInput(errs.CodeInvalidInput, "OpenADR 3.0.1 subscribes to the objects of one program: --program is required", nil)
+		}
+		if _, err := typedTargets(c.Targets); err != nil {
+			return err
+		}
 	}
 	if c.Count < 0 || c.Duration < 0 {
 		return errs.InvalidInput(errs.CodeInvalidInput, "--count and --duration must not be negative", nil)
@@ -306,6 +318,9 @@ func (c *listenConfig) subscribe(ctx context.Context, a *api, sel *selection, oo
 		name = "openadrctl"
 	}
 	sub := openadr.Subscription{ClientName: name, ProgramID: c.Program, Targets: c.Targets, ObjectOperations: []openadr.ObjectOperation{oo}}
+	if err := retarget(c.Version(), &sub); err != nil {
+		return nil, err
+	}
 	cctx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
 	var created openadr.Subscription
@@ -415,7 +430,7 @@ func (c *listenConfig) runWebhook(ctx context.Context, a *api, sel *selection, s
 		callback = scheme + "://" + l.Addr().String() + "/"
 	}
 	token := randomToken()
-	h := &webhook.Handler{BearerToken: token, Notify: func(_ context.Context, n openadr.Notification) error {
+	h := &webhook.Handler{BearerToken: token, Version: c.Version(), Notify: func(_ context.Context, n openadr.Notification) error {
 		s.write(notificationOf("webhook", "", n))
 		return nil
 	}}

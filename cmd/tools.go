@@ -183,6 +183,7 @@ found before giving it credentials.`,
 var kinds = []string{"program", "event", "report", "ven", "resource", "subscription", "resource-group"}
 
 type validateConfig struct {
+	Spec   string `flag:"spec" env:"OPENADRCTL_SPEC" desc:"Revision of OpenADR the JSON is of: 3.1.0 or 3.0.1"`
 	Format string `flag:"format" env:"OPENADRCTL_FORMAT" desc:"Output format: text, json or table"`
 }
 
@@ -210,12 +211,13 @@ func (v *Valid) TableHeaders() []string { return []string{"FILE", "KIND", "NAME"
 func (v *Valid) TableRows() [][]string { return [][]string{{v.File, v.Kind, v.Name, "true"}} }
 
 func newValidateCmd() *cobra.Command {
-	c := validateConfig{Format: "text"}
+	c := validateConfig{Spec: string(openadr.Version310), Format: "text"}
 	cmd := &cobra.Command{
 		Use:   "validate <kind> <file>",
-		Short: "Check an object against the OpenADR 3.1.0 schema, offline",
+		Short: "Check an object against the OpenADR schema, offline",
 		Long: `Read the JSON of an object from a file (- for stdin) and check it as a client does before
-it sends one: the properties a client provides, against the OpenADR 3.1.0 schema. Kinds:
+it sends one: the properties a client provides, against the OpenADR 3.1.0 schema, or that
+of 3.0.1 with --spec 3.0.1. Kinds:
 ` + strings.Join(kinds, ", ") + `.
 
 A valid object exits 0. One that is not exits 3 with the property that is wrong (with
@@ -225,7 +227,14 @@ A valid object exits 0. One that is not exits 3 with the property that is wrong 
 		Args:      cobra.ExactArgs(2),
 		ValidArgs: kinds,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runner.RunFormattedChecked(cmd, c.Format, func() error { return checkKind(args[0]) }, func(context.Context) (any, error) {
+			return runner.RunFormattedChecked(cmd, c.Format, func() error {
+				v := openadr.Version(strings.TrimSpace(c.Spec))
+				if !v.Supported() {
+					return errs.InvalidInput(errs.CodeInvalidInput, fmt.Sprintf("--spec %q: 3.1.0 or 3.0.1", c.Spec), nil)
+				}
+				oadr.SetRevision(v)
+				return checkKind(args[0])
+			}, func(context.Context) (any, error) {
 				v, err := readObject(args[0], args[1], cmd)
 				if err != nil {
 					return nil, err

@@ -313,10 +313,21 @@ func resourcesCmd(role Role) *cobra.Command {
 		kind: oadr.Resources, use: "resources", aliases: []string{"resource"},
 		short: "Resources: the devices behind a VEN",
 		list: func(a *api, ctx context.Context, q client.ResourceQuery) ([]openadr.Resource, error) {
+			if err := needVEN(a, q.VENID); err != nil {
+				return nil, err
+			}
 			return pick(a).Resources(ctx, q)
 		},
 		get: func(a *api, ctx context.Context, id string) (openadr.Resource, error) {
 			return pick(a).Resource(ctx, id)
+		},
+		parent:      "ven",
+		parentUsage: "ID of the VEN of the resource: required with --spec 3.0.1, which reaches a resource through its VEN",
+		getOf: func(a *api, ctx context.Context, ven, id string) (openadr.Resource, error) {
+			if err := needVEN(a, ven); err != nil {
+				return openadr.Resource{}, err
+			}
+			return pick(a).ResourceOf(ctx, ven, id)
 		},
 		query: func(cmd *cobra.Command) func(client.Page) client.ResourceQuery {
 			var name, ven string
@@ -367,6 +378,12 @@ func resourcesCmd(role Role) *cobra.Command {
 		n.del = func(a *api, ctx context.Context, id string) (openadr.Resource, error) {
 			return a.ven.DeleteResource(ctx, id)
 		}
+		n.delOf = func(a *api, ctx context.Context, ven, id string) (openadr.Resource, error) {
+			if err := needVEN(a, ven); err != nil {
+				return openadr.Resource{}, err
+			}
+			return a.ven.DeleteResourceOf(ctx, ven, id)
+		}
 	case BL:
 		n.create = func(a *api, ctx context.Context, r openadr.Resource) (openadr.Resource, error) {
 			return a.bl.CreateResource(ctx, r)
@@ -376,6 +393,12 @@ func resourcesCmd(role Role) *cobra.Command {
 		}
 		n.del = func(a *api, ctx context.Context, id string) (openadr.Resource, error) {
 			return a.bl.DeleteResource(ctx, id)
+		}
+		n.delOf = func(a *api, ctx context.Context, ven, id string) (openadr.Resource, error) {
+			if err := needVEN(a, ven); err != nil {
+				return openadr.Resource{}, err
+			}
+			return a.bl.DeleteResourceOf(ctx, ven, id)
 		}
 	}
 	return n.command(role)
@@ -594,6 +617,15 @@ go-openadr shares. A VTN without them answers 404 or 501.`,
 	return n.command(role)
 }
 
+// needVEN refuses to reach resources without --ven with OpenADR 3.0.1,
+// which reaches them through their VEN.
+func needVEN(a *api, ven string) error {
+	if ven == "" && a.conn.Version() == openadr.Version301 {
+		return errs.InvalidInput(errs.CodeInvalidInput, "--ven is required with --spec 3.0.1, which reaches resources through their VEN", nil)
+	}
+	return nil
+}
+
 // reader is what both roles can read.
 type reader interface {
 	Programs(context.Context, client.ProgramQuery) ([]openadr.Program, error)
@@ -606,6 +638,7 @@ type reader interface {
 	VEN(context.Context, string) (openadr.VEN, error)
 	Resources(context.Context, client.ResourceQuery) ([]openadr.Resource, error)
 	Resource(context.Context, string) (openadr.Resource, error)
+	ResourceOf(ctx context.Context, venID, id string) (openadr.Resource, error)
 	ResourceGroups(context.Context, client.ResourceGroupQuery) ([]openadr.ResourceGroup, error)
 	ResourceGroup(context.Context, string) (openadr.ResourceGroup, error)
 	Notifiers(context.Context) (openadr.Notifiers, error)

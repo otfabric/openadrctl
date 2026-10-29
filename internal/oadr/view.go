@@ -155,6 +155,22 @@ func List(s []string) string {
 	return strings.Join(s, ",")
 }
 
+// Targets formats the targets of an object: the strings of OpenADR 3.1.0,
+// or the TYPE=value of 3.0.1.
+func Targets(plain []string, typed []openadr.ValuesMap) string {
+	plain = append([]string(nil), plain...)
+	for _, m := range typed {
+		for _, v := range m.Values {
+			s, ok := v.Text()
+			if !ok {
+				s = v.String()
+			}
+			plain = append(plain, m.Type+"="+s)
+		}
+	}
+	return List(plain)
+}
+
 func or(s string) string {
 	if s == "" {
 		return "-"
@@ -229,7 +245,7 @@ var (
 					payloads = append(payloads, d.PayloadType)
 				}
 			}
-			return []string{p.ID, p.Name, List(p.Targets), List(payloads)}
+			return []string{p.ID, p.Name, Targets(p.Targets, p.TypedTargets), List(payloads)}
 		},
 		Fields: func(v any) []Field {
 			p := v.(openadr.Program)
@@ -265,7 +281,7 @@ var (
 			for _, r := range e.ReportDescriptors {
 				reports = append(reports, r.PayloadType)
 			}
-			return []Field{{"targets", List(e.Targets)}, {"interval period", Period(e.IntervalPeriod)}, {"duration", dur}, {"reports asked", List(reports)}}
+			return []Field{{"targets", Targets(e.Targets, e.TypedTargets)}, {"interval period", Period(e.IntervalPeriod)}, {"duration", dur}, {"reports asked", List(reports)}}
 		},
 	}
 	Reports = &Kind{Name: "report", Plural: "reports",
@@ -291,7 +307,7 @@ var (
 		Headers: []string{"ID", "NAME", "CLIENT_ID", "TARGETS"},
 		Row: func(v any) []string {
 			x := v.(openadr.VEN)
-			return []string{x.ID, x.Name, or(x.ClientID), List(x.Targets)}
+			return []string{x.ID, x.Name, or(x.ClientID), Targets(x.Targets, x.TypedTargets)}
 		},
 		Fields: func(v any) []Field { return []Field{{"attributes", valuesMaps(v.(openadr.VEN).Attributes)}} },
 	}
@@ -299,7 +315,7 @@ var (
 		Headers: []string{"ID", "NAME", "VEN", "CLIENT_ID", "TARGETS"},
 		Row: func(v any) []string {
 			x := v.(openadr.Resource)
-			return []string{x.ID, x.Name, x.VENID, or(x.ClientID), List(x.Targets)}
+			return []string{x.ID, x.Name, x.VENID, or(x.ClientID), Targets(x.Targets, x.TypedTargets)}
 		},
 		Fields: func(v any) []Field { return []Field{{"attributes", valuesMaps(v.(openadr.Resource).Attributes)}} },
 	}
@@ -326,7 +342,7 @@ var (
 		},
 		Fields: func(v any) []Field {
 			s := v.(openadr.Subscription)
-			return []Field{{"client id", or(s.ClientID)}, {"targets", List(s.Targets)}}
+			return []Field{{"client id", or(s.ClientID)}, {"targets", Targets(s.Targets, s.TypedTargets)}}
 		},
 	}
 	ResourceGroups = &Kind{Name: "resource group", Plural: "resource groups",

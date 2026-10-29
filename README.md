@@ -10,7 +10,8 @@ openadrctl speaks [OpenADR 3](https://www.openadr.org/specification), revision
 3.1.0, the demand-response protocol between a utility or aggregator and the
 sites that respond to its prices and load-shed requests, in every role: as a
 **VEN** (a site), as **Business Logic** (the utility's side), and as a
-**VTN** (the server between them). It is built on
+**VTN** (the server between them). As a VEN and as Business Logic it also
+speaks revision 3.0.1, with `--spec 3.0.1`. It is built on
 [go-openadr](https://github.com/otfabric/go-openadr), and is one static binary
 with no runtime dependencies.
 
@@ -305,7 +306,8 @@ fetches a token with `--client-id` and the secret from `OPENADRCTL_CLIENT_SECRET
 or `--client-secret-file` (never a flag, so that it stays out of the process
 list and shell history), or sends a bearer token from `OPENADRCTL_TOKEN` or
 `--token-file`. Without either it sends no token. `--ca` names the CA of the
-VTN, `--cert` and `--key` a client certificate for mutual TLS.
+VTN, `--cert` and `--key` a client certificate for mutual TLS. `--spec 3.0.1`
+talks to a VTN of OpenADR 3.0.1 (see [OpenADR 3.0.1](#which-openadr-version-does-it-speak)).
 
 Every command has `--help` with examples, and every command with a result
 `--format text|table|json`.
@@ -316,8 +318,8 @@ what they did (`created event 919fe864… (evening-peak)`); `events create`,
 The scenarios, with their real output, are in the **[guide](docs/guide.md)**:
 a VTN for development, reading as a VEN, publishing prices and limits,
 reports, VENs and resources, notifications by WebSocket, webhook and MQTT,
-polling, a VTN with TLS, a store and MQTT, scripting with JSON, and
-troubleshooting.
+polling, a VTN with TLS, a store and MQTT, OpenADR 3.0.1 against OpenLEADR
+v0.1.4, scripting with JSON, and troubleshooting.
 
 ## Commands
 
@@ -356,6 +358,7 @@ sets the VTN and the client once.
 | Variable | Flag |
 |----------|------|
 | `OPENADRCTL_URL` | `--url` |
+| `OPENADRCTL_SPEC` | `--spec` (3.1.0 or 3.0.1; also of `validate`) |
 | `OPENADRCTL_CLIENT_ID` | `--client-id` |
 | `OPENADRCTL_CLIENT_SECRET` | (no flag: the secret itself) |
 | `OPENADRCTL_CLIENT_SECRET_FILE` | `--client-secret-file` |
@@ -384,7 +387,7 @@ number that does not parse) exits 3.
 
 Results go to stdout: text by default, `--format table`, or `--format json`
 ([fields](docs/json-output.md)). Objects are JSON as OpenADR 3.1.0 has them,
-so that `get --format json` can be edited and sent back with `--file`.
+or 3.0.1 with `--spec 3.0.1`, so that `get --format json` can be edited and sent back with `--file`.
 Streams (`listen`, `events watch`, `vtn start`, `discover`) write a record per
 event, JSON Lines with `--format json`. Progress and diagnostics go to stderr.
 
@@ -427,8 +430,21 @@ $ openadrctl bl programs delete dynamic-price --yes --format json
 
 OpenADR 3.1.0, the revision go-openadr implements
 ([CONFORMANCE.md](https://github.com/otfabric/go-openadr/blob/main/docs/CONFORMANCE.md)
-says how). openadrctl has not been tested against a 3.0.1 VTN. OpenADR 2.0
-(XML) is a different protocol and is not supported.
+says how), in every role. As a VEN and as Business Logic also OpenADR 3.0.1,
+with `--spec 3.0.1` (or `OPENADRCTL_SPEC=3.0.1`). What changes then:
+
+| | With `--spec 3.0.1` |
+|---|---|
+| `--target` | `TYPE=value`, such as `--target GROUP=group-a`: 3.0.1 targets have a type. A search names targets of one type |
+| Token | from `/auth/token` of the VTN unless `--token-url` says otherwise: 3.0.1 has no `GET /auth/server` |
+| Resources | reached through their VEN: `--ven` on `resources list`, `get`, `update` and `delete` |
+| Reports | name their program, which openadrctl reads from the event |
+| `listen` | `--via webhook` and `--program` only: 3.0.1 has no MQTT or WebSockets, and a subscription names its program |
+| Not there | `notifiers`, `topics` and resource groups exit 3 with `not_in_revision`, without sending anything; `ping` skips its `notifiers` step |
+| JSON | `--format json`, `--file` and `validate --spec 3.0.1` are the JSON of 3.0.1 (`programLongName`, `country`, … as properties; openadrctl shows them as attributes, such as `COUNTRY`) |
+
+`vtn start` serves 3.1.0 only. OpenADR 2.0 (XML) is a different protocol and
+is not supported.
 
 ### The VTN answers 401. What should I check?
 
@@ -477,11 +493,18 @@ openadrctl is go-openadr, whose client and VTN are tested against
 [ElaadNL client](https://github.com/ElaadNL/openadr3-client) through the images
 of [openadr-interop](https://github.com/otfabric/openadr-interop) (see its
 [INTEROP.md](https://github.com/otfabric/go-openadr/blob/main/INTEROP.md)).
-openadrctl itself is run against the OpenLEADR VTN of openadr-interop v0.4.0
+openadrctl itself is run against the OpenLEADR VTN of openadr-interop v0.5.0
 by `scripts/interop.sh`: 25 checks in both roles, among them programs,
 events, reports, a VEN's token refused (403), events watch, and notifications
 by WebSocket and by MQTT on the image's broker. The [guide](docs/guide.md)
 shows part of that run.
+
+With `--spec 3.0.1`, `scripts/interop301.sh` runs it against OpenLEADR v0.1.4,
+an OpenADR 3.0.1 VTN (openadr-interop v0.5.0, `openleadr301`): 37 checks in
+both roles, among them typed targets in objects and searches, resources
+through their VEN, a report that names its program, `validate --spec 3.0.1`
+of what `get` wrote, and the operations 3.0.1 does not have, refused before
+anything is sent.
 
 `scripts/mqtt-token.sh` runs MQTT with the clients' OAuth2 tokens on
 [EMQX](https://www.emqx.io/) 6.3.1, whose HTTP authenticator checks every
@@ -507,6 +530,9 @@ VTN has no webhook sender, and does not announce `WEBHOOK` in
   on a public address (`vtn start` does too, unless `--insecure-webhooks`).
 - **WebSockets and resource groups are extensions** of OpenLEADR and
   go-openadr, not part of OpenADR 3.1.0.
+- **OpenADR 3.0.1 as a client only.** `vtn start` serves 3.1.0. With
+  `--spec 3.0.1` an event's `--duration` is refused (3.0.1 events have none),
+  and the 3.1.0 searches 3.0.1 does not have (`events list --active`) exit 3.
 - **DNS-SD** needs multicast on the local network; it finds nothing across
   routers or in most container networks.
 
