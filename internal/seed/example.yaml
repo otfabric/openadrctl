@@ -1,0 +1,80 @@
+# Seed file of openadrctl vtn start: the OAuth2 clients of the VTN, and the
+# objects it starts with. YAML or JSON. Every section is optional.
+#
+# The objects are written as OpenADR 3.1.0 has them in JSON (programName,
+# intervalPeriod, ...). An object may give its own "id", so that the objects
+# after it can refer to it; one without gets a random ID. Objects are created
+# in the order programs, vens, resources, events, resourceGroups. With
+# --store, an object whose ID is already in the store is left as it is.
+
+# OAuth2 clients (client-credentials grant), served at /auth/token.
+#   role: bl   Business Logic: reads everything, writes programs and events
+#   role: ven  a VEN: reads what is meant for it, writes its own objects and reports
+# Give the secret in the file, or name an environment variable that holds it.
+clients:
+  - id: utility
+    secret: utility-secret
+    role: bl
+  - id: site-42
+    secret: site-42-secret      # or: secretEnv: SITE_42_SECRET
+    role: ven
+
+programs:
+  - id: dynamic-price
+    programName: dynamic-price
+    payloadDescriptors:
+      - objectType: EVENT_PAYLOAD_DESCRIPTOR
+        payloadType: PRICE
+        units: KWH
+        currency: EUR
+  - id: flex-group-a
+    programName: flex-group-a
+    targets: [group-a]          # only VENs granted group-a see it
+
+# VEN objects. clientID is the client the VEN authenticates as; targets
+# are what Business Logic grants it.
+vens:
+  - id: site-42
+    venName: site-42
+    clientID: site-42
+    targets: [group-a]
+
+resources:
+  - id: site-42-meter
+    resourceName: meter-1
+    venID: site-42
+    clientID: site-42
+    attributes:
+      - type: MAX_POWER_CONSUMPTION
+        values: [11]
+
+events:
+  - id: price-2030-01-01
+    programID: dynamic-price
+    eventName: day-ahead 2030-01-01
+    intervalPeriod:
+      start: "2030-01-01T00:00:00Z"
+      duration: PT1H
+    intervals:
+      - id: 0
+        payloads: [{type: PRICE, values: [0.17]}]
+      - id: 1
+        payloads: [{type: PRICE, values: [0.21]}]
+      - id: 2
+        payloads: [{type: PRICE, values: [0.25]}]
+    reportDescriptors:
+      - payloadType: USAGE
+        readingType: DIRECT_READ
+        units: KWH
+        startInterval: -1
+        numIntervals: -1
+        historical: true
+        frequency: -1
+        repeat: 1
+
+# Resource groups are an extension (vtn start --resource-groups).
+resourceGroups:
+  - id: feeder-7
+    resourceGroupName: feeder-7
+    children:
+      - {type: ven_resource, id: site-42-meter}

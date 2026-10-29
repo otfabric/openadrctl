@@ -1,0 +1,26 @@
+name: CI
+run-name: "CI (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+# The shared workflow exchanges an OIDC token with Codecov; a caller must
+# grant id-token: write or GitHub refuses to start the run.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  ci:
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v2
+    with:
+      codecov-name: openadrctl
+      go-versions: '["1.26", "1.27"]'
+      # Test the cmd packages as well (the shared default skips /cmd) and
+      # attribute coverage across the whole module, matching `make coverage`.
+      test-exclude-regex: "/example(s)?($|/)"
+      coverpkg: ./...
+    secrets: inherit
