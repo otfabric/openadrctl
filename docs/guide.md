@@ -2,8 +2,11 @@
 
 Each scenario shows the commands and what they print. The output is real:
 recorded against openadrctl's own VTN (`vtn start` with its example seed)
-and, where noted, against the OpenLEADR VTN of
-[openadr-interop](https://github.com/otfabric/openadr-interop) v0.4.0.
+and, where noted, against the reference VTNs of
+[openadr-interop](https://github.com/otfabric/openadr-interop): OpenLEADR
+v0.2.7 of its v0.4.0 (section 11), and OpenLEADR v0.1.4 for OpenADR 3.0.1,
+built from the source of its v0.5.0 (section 12; `scripts/interop301.sh`
+runs the same commands against the published image).
 Identifiers, times and durations differ on every run.
 
 1. [A VTN for development](#1-a-vtn-for-development)
@@ -17,8 +20,9 @@ Identifiers, times and durations differ on every run.
 9. [Polling: events watch](#9-polling-events-watch)
 10. [A VTN with TLS, a store, MQTT and discovery](#10-a-vtn-with-tls-a-store-mqtt-and-discovery)
 11. [Against another VTN: OpenLEADR](#11-against-another-vtn-openleadr)
-12. [Scripting: JSON and exit codes](#12-scripting-json-and-exit-codes)
-13. [Troubleshooting](#13-troubleshooting)
+12. [OpenADR 3.0.1: OpenLEADR v0.1.4](#12-openadr-301-openleadr-v014)
+13. [Scripting: JSON and exit codes](#13-scripting-json-and-exit-codes)
+14. [Troubleshooting](#14-troubleshooting)
 
 ---
 
@@ -647,7 +651,135 @@ an event that has reports: deleting it is refused with 409 until the reports
 are deleted. `scripts/interop.sh` runs all of this, and
 more, as 25 checks.
 
-## 12. Scripting: JSON and exit codes
+## 12. OpenADR 3.0.1: OpenLEADR v0.1.4
+
+A VTN of the earlier revision, OpenADR 3.0.1: OpenLEADR v0.1.4, the last
+OpenLEADR for 3.0, as the `openleadr301` image of openadr-interop serves it.
+`--spec 3.0.1` (or `OPENADRCTL_SPEC`) is all that changes on the command line:
+
+```bash
+docker run -d --rm --name openleadr301 -p 127.0.0.1:18091:8080 \
+  ghcr.io/otfabric/openadr-interop-openleadr301:v0.5.0 \
+  server --fixture /fixtures/baseline-301/fixture.json --public-url http://127.0.0.1:18091
+export OPENADRCTL_URL=http://127.0.0.1:18091 OPENADRCTL_SPEC=3.0.1
+export OPENADRCTL_CLIENT_ID=interop-bl OPENADRCTL_CLIENT_SECRET=interop-bl-secret
+```
+
+The token comes from `/auth/token` (3.0.1 has no `GET /auth/server`), and
+there are no notifiers to ask for:
+
+```console
+$ openadrctl ping
+connect    ok           0ms  127.0.0.1:18091
+tls        skipped      0ms  plain http
+token      ok           7ms  from http://127.0.0.1:18091/auth/token, valid 720h0m0s
+api        ok           3ms  GET /programs: group-a-flex, ...
+notifiers  skipped      0ms  not in OpenADR 3.0.1
+http://127.0.0.1:18091 answers
+```
+
+Targets have a type, written `TYPE=value`; resources are reached through
+their VEN:
+
+```console
+$ openadrctl bl vens list
+ID                                    NAME    CLIENT_ID  TARGETS
+--                                    ----    ---------  -------
+4ba541ca-a513-4c1d-aca0-0698447b9aae  site-2  -          -
+cf0cca29-f7d7-48e1-9e34-c8710eeefe97  site-1  -          GROUP=group-a
+
+$ openadrctl bl resources list --ven cf0cca29-f7d7-48e1-9e34-c8710eeefe97
+ID                                    NAME     VEN                                   CLIENT_ID  TARGETS
+--                                    ----     ---                                   ---------  -------
+cb80da6b-ca52-4cf3-a64a-dedd03cdd3f2  battery  cf0cca29-f7d7-48e1-9e34-c8710eeefe97  -          -
+
+$ openadrctl bl programs create --name evening-flex --target VEN_NAME=site-1 --target GROUP=group-a --attribute COUNTRY=NL
+created program 9c0b8b3a-d5df-495e-a05e-986cb95e8af5 (evening-flex)
+
+$ openadrctl bl programs list --target GROUP=group-a
+ID                                    NAME          TARGETS                        PAYLOADS
+--                                    ----          -------                        --------
+9c0b8b3a-d5df-495e-a05e-986cb95e8af5  evening-flex  GROUP=group-a,VEN_NAME=site-1  -
+```
+
+`--format json` is the JSON of 3.0.1: the attribute `COUNTRY` is the
+property `country` there, and targets are values maps. `--file` and
+`validate --spec 3.0.1` read it back:
+
+```console
+$ openadrctl bl programs get 9c0b8b3a-d5df-495e-a05e-986cb95e8af5 --format json
+{
+  "id": "9c0b8b3a-d5df-495e-a05e-986cb95e8af5",
+  "createdDateTime": "2026-10-29T01:57:36.233438Z",
+  "modificationDateTime": "2026-10-29T01:57:36.233438Z",
+  "objectType": "PROGRAM",
+  "programName": "evening-flex",
+  "country": "NL",
+  "targets": [
+    {
+      "type": "GROUP",
+      "values": [
+        "group-a"
+      ]
+    },
+    {
+      "type": "VEN_NAME",
+      "values": [
+        "site-1"
+      ]
+    }
+  ]
+}
+```
+
+A 3.0.1 report names its program; openadrctl reads it from the event:
+
+```console
+$ openadrctl bl events create --program 9c0b8b3a-d5df-495e-a05e-986cb95e8af5 --name evening-limit \
+    --type IMPORT_CAPACITY_LIMIT --start 2030-01-01T17:00:00Z --interval PT1H --value 5 --value 3 --yes
+created event a8483314-131a-4fae-9a55-e46c5aeaba6c (evening-limit)
+
+$ export OPENADRCTL_CLIENT_ID=interop-ven-1 OPENADRCTL_CLIENT_SECRET=interop-ven-1-secret
+$ openadrctl ven reports create --event a8483314-131a-4fae-9a55-e46c5aeaba6c --client-name site-1 --type USAGE --value 2.5
+created report 7f44bc98-6bc5-40f5-b3b7-d1e31ccbcd5c
+
+$ openadrctl ven reports get 7f44bc98-6bc5-40f5-b3b7-d1e31ccbcd5c --format json | jq '{programID, eventID, clientName}'
+{
+  "programID": "9c0b8b3a-d5df-495e-a05e-986cb95e8af5",
+  "eventID": "a8483314-131a-4fae-9a55-e46c5aeaba6c",
+  "clientName": "site-1"
+}
+
+$ openadrctl ven programs list
+ID                                    NAME          TARGETS        PAYLOADS
+--                                    ----          -------        --------
+9c0b8b3a-d5df-495e-a05e-986cb95e8af5  evening-flex  GROUP=group-a  -
+70586709-98f5-4891-8eb3-4728df69f784  group-a-flex  -              -
+67cbd9b6-7973-4e96-83db-ead1da601702  day-ahead     -              PRICE
+```
+
+The VEN sees the two programs targeted at `site-1`, and OpenLEADR does not
+show it their `VEN_NAME` targets. What 3.0.1 does not have, or cannot say,
+exits 3 before anything is sent:
+
+```console
+$ openadrctl bl programs list --target group-a
+error: --target: "group-a": OpenADR 3.0.1 targets have a type: TYPE=value, such as GROUP=group-1
+
+$ openadrctl bl resources list
+error: --ven is required with --spec 3.0.1, which reaches resources through their VEN
+
+$ openadrctl bl notifiers
+error: GET /notifiers is not in OpenADR 3.0.1: unsupported operation (nothing was sent)
+```
+
+Two things OpenLEADR v0.1.4 does its own way: it searches a program's
+targets but not its `VEN_NAME` ones (`--target VEN_NAME=site-1` finds
+nothing), and it lets only Business Logic delete a report, where the
+specification says VENs; a VEN's `reports delete` is answered 403. It has no
+subscriptions. `scripts/interop301.sh` runs all of this, and more.
+
+## 13. Scripting: JSON and exit codes
 
 Every command with a result takes `--format json`. Lists are `{"<kind>": [...]}` with the
 objects as OpenADR has them:
@@ -720,7 +852,7 @@ id=$(jq -r .id <<<"$out")
 The codes are in [exitcodes.md](exitcodes.md), the fields in
 [json-output.md](json-output.md).
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 | Symptom | What to check |
 |---------|---------------|

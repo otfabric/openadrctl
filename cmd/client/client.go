@@ -14,6 +14,7 @@ import (
 
 	"github.com/otfabric/openadrctl/internal/conn"
 	"github.com/otfabric/openadrctl/internal/errs"
+	"github.com/otfabric/openadrctl/internal/oadr"
 	"github.com/otfabric/openadrctl/internal/runner"
 )
 
@@ -27,6 +28,12 @@ const (
 )
 
 const envNote = `
+
+With --spec 3.0.1 (or OPENADRCTL_SPEC) the VTN is one of OpenADR 3.0.1: --target is
+TYPE=value, such as GROUP=group-1; resources are reached through their VEN (--ven); a
+subscription names a program and notifies by webhook; notifiers, MQTT topics and resource
+groups are not there.
+
 The connection comes from flags or the environment: OPENADRCTL_URL, OPENADRCTL_CLIENT_ID,
 OPENADRCTL_CLIENT_SECRET (or --client-secret-file), OPENADRCTL_TOKEN (or --token-file),
 OPENADRCTL_CA, and so on. Without credentials or a token, no token is sent: that is how a
@@ -81,6 +88,13 @@ type Common struct {
 
 func newCommon() Common { return Common{Config: conn.Defaults(), Format: "text"} }
 
+// use makes the revision of --spec the one objects are read and written in.
+func (c *Common) use() {
+	if c.Version().Supported() {
+		oadr.SetRevision(c.Version())
+	}
+}
+
 // api is a client of the VTN in a role.
 type api struct {
 	role Role
@@ -108,6 +122,7 @@ func (c *Common) connect(role Role) (*api, error) {
 // run is classified (conn.Classify); write says whether run may change the
 // VTN.
 func once(cmd *cobra.Command, role Role, c *Common, validate func() error, write bool, run func(ctx context.Context, a *api) (any, error)) error {
+	c.use()
 	return runner.RunFormattedChecked(cmd, c.Format, func() error {
 		if err := c.Validate(); err != nil {
 			return err

@@ -16,7 +16,7 @@ import (
 func TestVersionAndCompletion(t *testing.T) {
 	SetBuildMeta("v9.9.9", "v9.9.9", "abc1234", "2030-01-01T00:00:00Z")
 	r := must(t, 0, "version")
-	for _, want := range []string{"openadrctl version: v9.9.9", "commit:      abc1234", "openadr:     3.1.0 (go-openadr"} {
+	for _, want := range []string{"openadrctl version: v9.9.9", "commit:      abc1234", "openadr:     3.1.0, and 3.0.1 as a client (go-openadr"} {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("version lacks %q:\n%s", want, r.stdout)
 		}

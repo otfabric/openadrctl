@@ -6,14 +6,14 @@
 # events watch, and errors. Prints one line per check and exits 1 when one
 # fails.
 #
-#   scripts/interop.sh [tag]      # default tag: v0.4.0
+#   scripts/interop.sh [tag]      # default tag: v0.5.0
 #
 # Needs Docker and Go. The VTN and its broker are published on loopback only
 # (ports 18090 and 18883, or OPENADR_INTEROP_PORT and OPENADR_INTEROP_MQTT_PORT):
 # the image's client secrets are public.
 set -euo pipefail
 
-TAG="${1:-v0.4.0}"
+TAG="${1:-v0.5.0}"
 IMAGE="ghcr.io/otfabric/openadr-interop-openleadr:${TAG}"
 PORT="${OPENADR_INTEROP_PORT:-18090}"
 MQTT_PORT="${OPENADR_INTEROP_MQTT_PORT:-18883}"

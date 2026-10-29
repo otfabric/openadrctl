@@ -84,6 +84,8 @@ func Classify(err error, write bool) error {
 		return errs.InvalidInput(errs.CodeInvalidObject, short(err)+" (nothing was sent)", err).WithDetail(HTTPDetail{Field: valErr.Field})
 	case errors.Is(err, openadr.ErrConfiguration):
 		return errs.InvalidInput(errs.CodeInvalidConfig, short(err), err)
+	case errors.Is(err, errors.ErrUnsupported):
+		return errs.InvalidInput(errs.CodeNotInRevision, short(err)+" (nothing was sent)", err)
 	}
 	var certErr *tls.CertificateVerificationError
 	var unknownAuth x509.UnknownAuthorityError

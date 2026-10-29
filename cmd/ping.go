@@ -92,9 +92,11 @@ func newPingCmd() *cobra.Command {
 
   connect    a TCP connection to the host of --url
   tls        the TLS handshake (https only), verified against --ca or the system roots
-  token      a token from the token endpoint (with client credentials)
+  token      a token from the token endpoint (with client credentials): the one --token-url
+             names, or GET /auth/server, or with --spec 3.0.1 /auth/token
   api        GET /programs, one object at most
-  notifiers  GET /notifiers: how the VTN notifies (501 is "none", not a failure)
+  notifiers  GET /notifiers: how the VTN notifies (501 is "none", not a failure);
+             skipped with --spec 3.0.1, which has no such operation
 
 A step that fails ends the check; the steps after it are "skipped". The result is printed
 either way, and the exit code is that of the failure (docs/exitcodes.md): 4 when the VTN
@@ -217,6 +219,9 @@ func ping(ctx context.Context, c conn.Config) (*Ping, error) {
 		n, err := ven.Notifiers(ctx)
 		if errors.Is(err, openadr.ErrNotImplemented) {
 			return "none (501)", nil
+		}
+		if errors.Is(err, errors.ErrUnsupported) {
+			return "not in OpenADR " + string(c.Version()), errSkipped
 		}
 		if err != nil {
 			return "", err

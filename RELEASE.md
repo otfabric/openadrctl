@@ -4,6 +4,72 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.3.0
+
+**Date:** 2026-10-29  
+**Previous release:** v0.2.0
+
+### Summary
+
+OpenADR 3.0.1, as a VEN and as Business Logic: `--spec 3.0.1` talks to a VTN
+of the earlier revision, on go-openadr v0.5.0. `scripts/interop301.sh` runs it
+against OpenLEADR v0.1.4, the last OpenLEADR for OpenADR 3.0.
+
+### Added
+
+- **`--spec 3.0.1`** (or `OPENADRCTL_SPEC`) on every client command, `ping`,
+  `token` and `validate`. With it:
+  - `--target` is `TYPE=value` (`--target GROUP=group-a`), as 3.0.1 targets
+    have a type; a search names targets of one type, and targets without a
+    type exit 3;
+  - the token comes from `/auth/token` of the VTN unless `--token-url` says
+    otherwise, as 3.0.1 has no `GET /auth/server`;
+  - resources are reached through their VEN: `--ven` on `resources list`,
+    `get`, `update` and `delete`;
+  - a report names its program, read from its event;
+  - objects are read and written as the JSON of 3.0.1 (`--format json`,
+    `--file`, `validate`); its program properties (`programLongName`,
+    `country`, …) are shown as the attributes 3.1.0 made them (`COUNTRY`);
+  - `listen` takes `--via webhook` with `--program` only;
+  - `notifiers`, `topics` and resource groups exit 3 with the new code
+    **`not_in_revision`**, without sending anything, and `ping` skips its
+    `notifiers` step.
+- **`scripts/interop301.sh`:** openadrctl with `--spec 3.0.1` against the
+  OpenLEADR v0.1.4 VTN of openadr-interop (`openleadr301`).
+
+### Changed
+
+- go-openadr v0.5.0. `version` says `openadr: 3.1.0, and 3.0.1 as a client`.
+- `resources get` and `delete` take `--ven` with 3.1.0 too, where it is not
+  needed and not sent.
+- `make lint-ci` runs with golangci-lint v2, which has no `--out-format`.
+
+### Verification
+
+- `make check` (coverage 90 %), and the race tests on Linux with Go 1.26.
+- A new test drives a 3.0.1 VTN double: the token from `/auth/token`, typed
+  targets in searches, objects and `--dry-run`, resources through `--ven`,
+  `not_in_revision` with nothing sent, `listen` refused but by webhook with a
+  program, and `validate --spec 3.0.1`.
+- `scripts/interop301.sh` against OpenLEADR v0.1.4 (openadr-interop v0.5.0):
+  37 checks passed.
+- `scripts/interop.sh` against OpenLEADR v0.2.7 (openadr-interop v0.5.0):
+  25 checks passed.
+
+### Known limitations
+
+- **3.0.1 as a client only:** `vtn start` serves 3.1.0.
+- With `--spec 3.0.1`, an event's `--duration` and `events list --active`
+  exit 3: 3.0.1 has neither.
+- **OpenLEADR v0.1.4**, found by `scripts/interop301.sh`: a search for
+  `VEN_NAME` targets finds no program (it keeps those targets apart, to
+  decide who sees a program), and a VEN cannot delete its report (403; it
+  lets only Business Logic, against the specification, and openadrctl's
+  Business Logic has no report delete). It serves no subscriptions, so
+  `listen` has nothing to subscribe to there.
+
+---
+
 ## v0.2.0
 
 **Date:** 2026-10-29  

@@ -7,7 +7,7 @@ to a name or shape is called out in the release notes.
 
 | Concept | JSON |
 |---------|------|
-| OpenADR objects | As OpenADR 3.1.0 has them: `id`, `createdDateTime`, `programName`, `intervalPeriod`, … Whatever a `get` writes, `--file` and `validate` read back |
+| OpenADR objects | As OpenADR 3.1.0 has them: `id`, `createdDateTime`, `programName`, `intervalPeriod`, …; as 3.0.1 has them with `--spec 3.0.1`. Whatever a `get` writes, `--file` and `validate` read back, with the same `--spec` |
 | Names openadrctl adds | snake_case (`token_url`, `requires_auth`, `randomize_start`); the names of OpenADR keep its spelling (`objectType`, `operation`) |
 | Times | RFC 3339 in UTC (`2030-01-01T00:00:00Z`); records of streams have sub-second precision |
 | Durations | ISO 8601 inside OpenADR objects (`PT1H`), as OpenADR has them; Go durations elsewhere (`retry_after`: `1s`) |

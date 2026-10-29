@@ -10,8 +10,10 @@ const (
 	CodeInvalidFlagCombination = "invalid_flag_combination"
 	CodeInvalidConfig          = "invalid_config"
 	CodeInvalidCertificate     = "invalid_certificate"
-	// An object does not satisfy the OpenADR 3.1.0 schema: nothing was sent.
+	// An object does not satisfy the OpenADR schema: nothing was sent.
 	CodeInvalidObject = "invalid_object"
+	// The operation is not in the revision of --spec: nothing was sent.
+	CodeNotInRevision = "not_in_revision"
 	// A command that changes the VTN was not confirmed with --yes.
 	CodeConfirmationRequired = "confirmation_required"
 

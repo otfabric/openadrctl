@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package oadr turns the objects of go-openadr into what openadrctl reads
-// and writes: their JSON as OpenADR 3.1.0 gives it, and their text and
-// table forms.
+// and writes: their JSON as the revision of OpenADR of --spec gives it
+// (Revision), and their text and table forms.
 package oadr
 
 import (
@@ -13,9 +13,10 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	openadr "github.com/otfabric/go-openadr"
-	"github.com/otfabric/go-openadr/server/storage"
+	"github.com/otfabric/go-openadr/objectjson"
 
 	"github.com/otfabric/openadrctl/internal/errs"
 )
@@ -26,36 +27,44 @@ type Object interface {
 		openadr.Subscription | openadr.ResourceGroup
 }
 
+// revision is the revision of OpenADR whose JSON Encode writes and Decode
+// reads: that of --spec, set by a command before it reads or writes any.
+var revision atomic.Value // of openadr.Version
+
+// SetRevision makes v the revision of Encode and Decode.
+func SetRevision(v openadr.Version) { revision.Store(v) }
+
+// Revision is the revision of Encode and Decode: 3.1.0 unless set.
+func Revision() openadr.Version {
+	if v, ok := revision.Load().(openadr.Version); ok {
+		return v
+	}
+	return openadr.Version310
+}
+
 // zeroTimes is what an object that no VTN has stored says of its times.
 var zeroTimes = []byte(`"createdDateTime":"0001-01-01T00:00:00Z","modificationDateTime":"0001-01-01T00:00:00Z",`)
 
-// Encode returns the JSON of an object, as OpenADR 3.1.0 gives it. The
+// Encode returns the JSON of an object, as a VTN of Revision gives it. The
 // times of an object no VTN has stored are left out.
 func Encode(v any) (json.RawMessage, error) {
 	var data []byte
 	var err error
 	switch v := v.(type) {
 	case openadr.Program:
-		data, err = storage.Encode(v)
+		data, err = objectjson.Marshal(Revision(), v)
 	case openadr.Event:
-		data, err = storage.Encode(v)
+		data, err = objectjson.Marshal(Revision(), v)
 	case openadr.Report:
-		data, err = storage.Encode(v)
+		data, err = objectjson.Marshal(Revision(), v)
 	case openadr.VEN:
-		data, err = storage.Encode(v)
+		data, err = objectjson.Marshal(Revision(), v)
 	case openadr.Resource:
-		data, err = storage.Encode(v)
+		data, err = objectjson.Marshal(Revision(), v)
 	case openadr.ResourceGroup:
-		data, err = storage.Encode(v)
+		data, err = objectjson.Marshal(Revision(), v)
 	case openadr.Subscription:
-		data, err = storage.Encode(storage.SubscriptionRecord{Subscription: v})
-		if err == nil {
-			var rec struct {
-				Subscription json.RawMessage `json:"subscription"`
-			}
-			err = json.Unmarshal(data, &rec)
-			data = rec.Subscription
-		}
+		data, err = objectjson.Marshal(Revision(), v)
 	default:
 		return nil, fmt.Errorf("oadr: cannot encode a %T", v)
 	}
@@ -68,36 +77,14 @@ func Encode(v any) (json.RawMessage, error) {
 // Decode reads the JSON of an object.
 func Decode[T Object](data []byte) (T, error) {
 	var out T
-	var v any
-	var err error
-	switch any(out).(type) {
-	case openadr.Program:
-		v, err = storage.Decode[openadr.Program](data)
-	case openadr.Event:
-		v, err = storage.Decode[openadr.Event](data)
-	case openadr.Report:
-		v, err = storage.Decode[openadr.Report](data)
-	case openadr.VEN:
-		v, err = storage.Decode[openadr.VEN](data)
-	case openadr.Resource:
-		v, err = storage.Decode[openadr.Resource](data)
-	case openadr.ResourceGroup:
-		v, err = storage.Decode[openadr.ResourceGroup](data)
-	case openadr.Subscription:
-		wrapped, _ := json.Marshal(struct {
-			Subscription json.RawMessage `json:"subscription"`
-		}{json.RawMessage(data)})
-		var rec storage.SubscriptionRecord
-		rec, err = storage.Decode[storage.SubscriptionRecord](wrapped)
-		v = rec.Subscription
-	}
+	v, err := objectjson.Unmarshal[T](Revision(), data)
 	if err != nil {
 		return out, err
 	}
 	if err := unknownProperties(data, v); err != nil {
 		return out, err
 	}
-	return v.(T), nil
+	return v, nil
 }
 
 // unknownProperties reports the properties of data that the object does not
@@ -117,7 +104,7 @@ func unknownProperties(data []byte, v any) error {
 		}
 		if len(unknown) > 0 {
 			sort.Strings(unknown)
-			return fmt.Errorf("not a property of OpenADR 3.1.0: %s", strings.Join(unknown, ", "))
+			return fmt.Errorf("not a property of OpenADR %s: %s", Revision(), strings.Join(unknown, ", "))
 		}
 	}
 	return nil

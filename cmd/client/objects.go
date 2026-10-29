@@ -33,6 +33,13 @@ type noun[T oadr.Object, Q any] struct {
 	update func(*api, context.Context, T) (T, error)
 	del    func(*api, context.Context, string) (T, error)
 
+	// parent is the flag of the object through which one is reached by
+	// ID, where a revision reaches it so: the VEN of a resource in OpenADR
+	// 3.0.1. getOf and delOf then take its value before the ID.
+	parent       string
+	parentUsage  string
+	getOf, delOf func(a *api, ctx context.Context, parent, id string) (T, error)
+
 	// query registers the filters of a search and returns how to make
 	// the query of a page.
 	query func(*cobra.Command) func(client.Page) Q
@@ -66,6 +73,35 @@ func (n noun[T, Q]) command(role Role, extra ...*cobra.Command) *cobra.Command {
 	return cmd
 }
 
+// parentFlag registers the flag of n.parent, if n has one and the command
+// does not already, and returns how to read it.
+func (n noun[T, Q]) parentFlag(cmd *cobra.Command) func() string {
+	if n.parent == "" {
+		return func() string { return "" }
+	}
+	if cmd.Flags().Lookup(n.parent) == nil {
+		cmd.Flags().String(n.parent, "", n.parentUsage)
+	}
+	return func() string {
+		v, _ := cmd.Flags().GetString(n.parent)
+		return v
+	}
+}
+
+func (n noun[T, Q]) fetch(a *api, ctx context.Context, parent, id string) (T, error) {
+	if n.getOf != nil {
+		return n.getOf(a, ctx, parent, id)
+	}
+	return n.get(a, ctx, id)
+}
+
+func (n noun[T, Q]) remove(a *api, ctx context.Context, parent, id string) (T, error) {
+	if n.delOf != nil {
+		return n.delOf(a, ctx, parent, id)
+	}
+	return n.del(a, ctx, id)
+}
+
 type listConfig struct {
 	Common
 	Skip  int `flag:"skip" desc:"Skip this many objects (one page only)"`
@@ -94,11 +130,21 @@ fetched, 50 objects at a time; with either, one page.`, n.kind.Plural),
 			var items []T
 			if cmd.Flags().Changed("skip") || cmd.Flags().Changed("limit") {
 				var err error
-				if items, err = n.list(a, ctx, query(client.Page{Skip: c.Skip, Limit: c.Limit})); err != nil {
+				q := query(client.Page{Skip: c.Skip, Limit: c.Limit})
+				if err := retargetQuery(c.Version(), &q); err != nil {
+					return nil, err
+				}
+				if items, err = n.list(a, ctx, q); err != nil {
 					return nil, err
 				}
 			} else {
-				for v, err := range client.Each(ctx, func(ctx context.Context, p client.Page) ([]T, error) { return n.list(a, ctx, query(p)) }) {
+				for v, err := range client.Each(ctx, func(ctx context.Context, p client.Page) ([]T, error) {
+					q := query(p)
+					if err := retargetQuery(c.Version(), &q); err != nil {
+						return nil, err
+					}
+					return n.list(a, ctx, q)
+				}) {
 					if err != nil {
 						return nil, err
 					}
@@ -123,15 +169,16 @@ func (n noun[T, Q]) getCmd(role Role) *cobra.Command {
 		Short:   fmt.Sprintf("Read a %s by its ID", n.kind.Name),
 		Example: n.examples["get"],
 		Args:    cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return once(cmd, role, &c, func() error { return checkID(args[0]) }, false, func(ctx context.Context, a *api) (any, error) {
-				v, err := n.get(a, ctx, args[0])
-				if err != nil {
-					return nil, err
-				}
-				return &oadr.One{Kind: n.kind, Value: v}, nil
-			})
-		},
+	}
+	parent := n.parentFlag(cmd)
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return once(cmd, role, &c, func() error { return checkID(args[0]) }, false, func(ctx context.Context, a *api) (any, error) {
+			v, err := n.fetch(a, ctx, parent(), args[0])
+			if err != nil {
+				return nil, err
+			}
+			return &oadr.One{Kind: n.kind, Value: v}, nil
+		})
 	}
 	runner.RegisterCommandCfg(cmd, &c)
 	return cmd
@@ -139,7 +186,7 @@ func (n noun[T, Q]) getCmd(role Role) *cobra.Command {
 
 type writeConfig struct {
 	Common
-	File   string `flag:"file" desc:"The object as JSON (OpenADR 3.1.0), - for stdin; flags change what it says"`
+	File   string `flag:"file" desc:"The object as JSON (of the revision of --spec), - for stdin; flags change what it says"`
 	DryRun bool   `flag:"dry-run" desc:"Validate and print the object that would be sent; send nothing"`
 	Yes    bool   `flag:"yes" desc:"Confirm the change"`
 }
@@ -154,7 +201,7 @@ func (n noun[T, Q]) writeCmd(role Role, create bool) *cobra.Command {
 	}
 	long := short + `.
 
-The object is validated against the OpenADR 3.1.0 schema before anything is sent; one that
+The object is validated against the OpenADR schema before anything is sent; one that
 is invalid exits 3 and nothing is sent. --dry-run prints it instead of sending it.`
 	if !create {
 		long += `
@@ -167,11 +214,12 @@ VTN has, and --file replaces them all.`
 	}
 	cmd := &cobra.Command{Use: use, Short: short, Long: long, Example: n.examples[verb], Args: args}
 	apply := n.fields(cmd)
+	parent := n.parentFlag(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		build := func(ctx context.Context, a *api) (T, error) {
 			var v T
 			if !create {
-				cur, err := n.get(a, ctx, args[0])
+				cur, err := n.fetch(a, ctx, parent(), args[0])
 				if err != nil {
 					return v, err
 				}
@@ -190,6 +238,9 @@ VTN has, and --file replaces them all.`
 			if err := apply(cmd, &v); err != nil {
 				return v, err
 			}
+			if err := retarget(c.Version(), &v); err != nil {
+				return v, err
+			}
 			if val, ok := any(v).(interface{ Validate() error }); ok {
 				if err := val.Validate(); err != nil {
 					return v, err
@@ -199,6 +250,7 @@ VTN has, and --file replaces them all.`
 		}
 		if c.DryRun && create {
 			// Nothing to read from the VTN: no connection either.
+			c.use()
 			return runner.RunFormattedChecked(cmd, c.Format, func() error { return nil }, func(ctx context.Context) (any, error) {
 				v, err := build(ctx, nil)
 				if err != nil {
@@ -259,20 +311,21 @@ func (n noun[T, Q]) deleteCmd(role Role) *cobra.Command {
 		Long:    fmt.Sprintf("Delete a %s. The VTN answers with the object as it last was, which is printed.", n.kind.Name),
 		Example: n.examples["delete"],
 		Args:    cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return once(cmd, role, &c.Common, func() error {
-				if err := confirmed(c.Yes, n.use+" delete"); err != nil {
-					return err
-				}
-				return checkID(args[0])
-			}, true, func(ctx context.Context, a *api) (any, error) {
-				v, err := n.del(a, ctx, args[0])
-				if err != nil {
-					return nil, err
-				}
-				return &oadr.One{Kind: n.kind, Value: v, Action: "deleted"}, nil
-			})
-		},
+	}
+	parent := n.parentFlag(cmd)
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return once(cmd, role, &c.Common, func() error {
+			if err := confirmed(c.Yes, n.use+" delete"); err != nil {
+				return err
+			}
+			return checkID(args[0])
+		}, true, func(ctx context.Context, a *api) (any, error) {
+			v, err := n.remove(a, ctx, parent(), args[0])
+			if err != nil {
+				return nil, err
+			}
+			return &oadr.One{Kind: n.kind, Value: v, Action: "deleted"}, nil
+		})
 	}
 	runner.RegisterCommandCfg(cmd, &c)
 	return cmd

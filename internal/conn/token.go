@@ -29,8 +29,10 @@ type TokenSource struct {
 	ClientSecret string
 	Scopes       []string
 	// TokenURL is the token endpoint; discovered with GET /auth/server
-	// when empty.
+	// when empty, or with OpenADR 3.0.1, which has no such operation,
+	// /auth/token of the VTN.
 	TokenURL string
+	Version  openadr.Version
 
 	mu      sync.Mutex
 	current *Token
@@ -109,6 +111,9 @@ func (s *TokenSource) Fetch(ctx context.Context) (*Token, error) {
 }
 
 func (s *TokenSource) fetch(ctx context.Context) (*Token, error) {
+	if s.TokenURL == "" && s.Version == openadr.Version301 {
+		s.TokenURL = s.Base + "/auth/token"
+	}
 	if s.TokenURL == "" {
 		u, err := s.discover(ctx)
 		if err != nil {

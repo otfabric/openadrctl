@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	openadr "github.com/otfabric/go-openadr"
 	"github.com/otfabric/go-openadr/client"
 
 	"github.com/otfabric/openadrctl/internal/errs"
@@ -25,10 +26,11 @@ import (
 // credentials, and how to reach the VTN.
 type Config struct {
 	URL              string        `flag:"url" env:"OPENADRCTL_URL" desc:"Base URL of the VTN's API, the one /programs is appended to, such as https://vtn.example/openadr3/3.1.0"`
+	Spec             string        `flag:"spec" env:"OPENADRCTL_SPEC" desc:"Revision of OpenADR the VTN speaks: 3.1.0 or 3.0.1"`
 	ClientID         string        `flag:"client-id" env:"OPENADRCTL_CLIENT_ID" desc:"OAuth2 client ID (client-credentials grant)"`
 	ClientSecret     string        `env:"OPENADRCTL_CLIENT_SECRET"`
 	ClientSecretFile string        `flag:"client-secret-file" env:"OPENADRCTL_CLIENT_SECRET_FILE" desc:"File holding the OAuth2 client secret (or OPENADRCTL_CLIENT_SECRET; never a flag)"`
-	TokenURL         string        `flag:"token-url" env:"OPENADRCTL_TOKEN_URL" desc:"Token endpoint (default: what the VTN names at GET /auth/server)"`
+	TokenURL         string        `flag:"token-url" env:"OPENADRCTL_TOKEN_URL" desc:"Token endpoint (default: what the VTN names at GET /auth/server; with --spec 3.0.1, /auth/token of the VTN)"`
 	Scopes           []string      `flag:"scope" env:"OPENADRCTL_SCOPE" desc:"Scopes to ask the token endpoint for (default: all the client has)"`
 	Token            string        `env:"OPENADRCTL_TOKEN"`
 	TokenFile        string        `flag:"token-file" env:"OPENADRCTL_TOKEN_FILE" desc:"File holding a bearer token, instead of client credentials (or OPENADRCTL_TOKEN)"`
@@ -41,7 +43,10 @@ type Config struct {
 }
 
 // Defaults returns the defaults of a Config.
-func Defaults() Config { return Config{Timeout: 30 * time.Second} }
+func Defaults() Config { return Config{Spec: string(openadr.Version310), Timeout: 30 * time.Second} }
+
+// Version is the revision of OpenADR of --spec.
+func (c Config) Version() openadr.Version { return openadr.Version(strings.TrimSpace(c.Spec)) }
 
 // Validate checks c without touching the network or the files.
 func (c Config) Validate() error {
@@ -50,6 +55,9 @@ func (c Config) Validate() error {
 	}
 	if _, err := BaseURL(c.URL); err != nil {
 		return err
+	}
+	if !c.Version().Supported() {
+		return errs.InvalidInput(errs.CodeInvalidInput, fmt.Sprintf("--spec %q: 3.1.0 or 3.0.1", c.Spec), nil)
 	}
 	secret := c.ClientSecret != "" || c.ClientSecretFile != ""
 	token := c.Token != "" || c.TokenFile != ""
@@ -152,7 +160,8 @@ func (c Config) Open() (*Conn, error) {
 			}
 			secret = s
 		}
-		out.Tokens = &TokenSource{Base: base, HTTP: hc, ClientID: c.ClientID, ClientSecret: secret, Scopes: c.Scopes, TokenURL: c.TokenURL}
+		out.Tokens = &TokenSource{Base: base, HTTP: hc, ClientID: c.ClientID, ClientSecret: secret, Scopes: c.Scopes, TokenURL: c.TokenURL,
+			Version: c.Version()}
 	}
 	return out, nil
 }
@@ -171,7 +180,7 @@ func readSecret(file, flag string) (string, error) {
 
 // ClientConfig is the configuration of a go-openadr client on c.
 func (c *Conn) ClientConfig() client.Config {
-	cfg := client.Config{BaseURL: c.Base, HTTPClient: c.HTTP, UserAgent: "openadrctl"}
+	cfg := client.Config{BaseURL: c.Base, Version: c.cfg.Version(), HTTPClient: c.HTTP, UserAgent: "openadrctl"}
 	switch {
 	case c.Tokens != nil:
 		cfg.Tokens = c.Tokens
@@ -183,6 +192,9 @@ func (c *Conn) ClientConfig() client.Config {
 	}
 	return cfg
 }
+
+// Version is the revision of OpenADR of the connection.
+func (c *Conn) Version() openadr.Version { return c.cfg.Version() }
 
 // VEN returns a client that speaks as a VEN.
 func (c *Conn) VEN() (*client.VEN, error) {

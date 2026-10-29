@@ -44,7 +44,7 @@ func NewRootCmd() *cobra.Command {
 		Short: "OpenADR 3 command-line VEN, Business Logic and VTN",
 		Long: `openadrctl speaks OpenADR 3.1.0, the protocol between a utility or aggregator (the VTN and
 its Business Logic) and the sites that respond to demand-response signals (VENs), in every
-role.
+role. As a VEN and as Business Logic it also speaks OpenADR 3.0.1, with --spec 3.0.1.
 
 As a VEN ("openadrctl ven") it reads the programs and events meant for it, reports on
 them, manages its VEN object and resources, and receives notifications by webhook, MQTT or
@@ -98,7 +98,7 @@ func newVersionCmd() *cobra.Command {
 			if s := strings.TrimSpace(buildMeta.buildDate); s != "" {
 				_, _ = fmt.Fprintf(out, "build date:  %s\n", s)
 			}
-			_, _ = fmt.Fprintf(out, "openadr:     %s (go-openadr %s)\n", openadr.Version310, goOpenADRVersion())
+			_, _ = fmt.Fprintf(out, "openadr:     %s, and %s as a client (go-openadr %s)\n", openadr.Version310, openadr.Version301, goOpenADRVersion())
 			_, _ = fmt.Fprintf(out, "go version:  %s\n", runtime.Version())
 			_, _ = fmt.Fprintf(out, "platform:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
 		},
