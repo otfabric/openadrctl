@@ -855,3 +855,90 @@ func TestRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// TestMQTTToken: a VTN whose clients log in to the broker with their token,
+// and a broker that asks the VTN at POST /auth/mqtt whether to let them in.
+func TestMQTTToken(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := l.Addr().String()
+	_ = l.Close()
+	broker, hook := startTokenBroker(t)
+	hook.url.Store("http://" + addr + "/auth/mqtt")
+	t.Setenv("OPENADRCTL_VTN_MQTT_PASSWORD", "vtn-secret")
+	v := startVTN(t, "--listen", addr, "--mqtt", broker, "--mqtt-client-auth", "token", "--mqtt-username", "vtn")
+
+	if r := must(t, 0, v.bl("bl", "notifiers")...); !strings.Contains(r.stdout, "OAUTH2_BEARER_TOKEN") || !strings.Contains(r.stdout, "{clientID}") {
+		t.Errorf("notifiers:\n%s", r.stdout)
+	}
+	// The client's token as the password, the client ID as the user name.
+	l1 := start(t, v.bl("bl", "listen", "--via", "mqtt", "--topics", "events", "--count", "1", "--format", "json")...)
+	waitFor(t, l1.err, "listening: "+broker)
+	must(t, 0, v.bl("bl", "events", "create", "--program", "dynamic-price", "--name", "by-token", "--type", "PRICE", "--value", "1", "--yes")...)
+	if code := l1.wait(t); code != 0 {
+		t.Fatalf("listen with a token: exit %d\n%s", code, l1.err)
+	}
+	if recs := lines(t, l1.out.String()); len(recs) != 1 || recs[0]["name"] != "by-token" {
+		t.Errorf("records: %v", recs)
+	}
+	// The VTN's publisher logs in at its first notification, with its own password.
+	waitFor(t, v.out, `"event":"mqtt_login","client":"vtn","status":200`)
+	waitFor(t, v.out, `"event":"mqtt_login","client":"utility","status":200`)
+	must(t, 0, v.ven("ven", "listen", "--via", "mqtt", "--topics", "ven-events:site-42", "--duration", "1s")...)
+
+	// A password that is not a token: the broker refuses, exit 4.
+	t.Setenv("OPENADRCTL_MQTT_PASSWORD", "not-a-token")
+	r := must(t, 4, v.ven("ven", "listen", "--via", "mqtt", "--topics", "ven-events:site-42", "--timeout", "2s")...)
+	if !strings.Contains(r.stderr, "not subscribed") {
+		t.Errorf("refused login: %s", r.stderr)
+	}
+	waitFor(t, v.out, `"event":"mqtt_login","client":"site-42","status":403`)
+
+	// The endpoint, as a broker calls it.
+	tok := strings.TrimSpace(must(t, 0, v.ven("token")...).stdout)
+	post := func(ct, body string) int {
+		t.Helper()
+		resp, err := http.Post(v.url+"/auth/mqtt", ct, strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	for _, c := range []struct {
+		ct, body string
+		want     int
+	}{
+		{"application/json", `{"username":"site-42","password":"` + tok + `"}`, 200},
+		{"application/x-www-form-urlencoded", "username=site-42&password=" + tok, 200},
+		{"application/json", `{"username":"utility","password":"` + tok + `"}`, 403}, // another client's token
+		{"application/json", `{"username":"vtn","password":"vtn-secret"}`, 200},
+		{"application/json", `{"username":"vtn","password":"wrong"}`, 403},
+		{"application/json", `{"username":"site-42"}`, 403},
+		{"application/json", `not json`, 400},
+	} {
+		if got := post(c.ct, c.body); got != c.want {
+			t.Errorf("POST /auth/mqtt %s: %d, want %d", c.body, got, c.want)
+		}
+	}
+	if resp, err := http.Get(v.url + "/auth/mqtt"); err != nil || resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("GET /auth/mqtt: %v %v", resp, err)
+	} else {
+		_ = resp.Body.Close()
+	}
+
+	// Without --mqtt-client-auth token there is no such endpoint.
+	plain := startVTN(t)
+	if resp, err := http.Post(plain.url+"/auth/mqtt", "application/json", strings.NewReader("{}")); err != nil || resp.StatusCode == http.StatusOK {
+		t.Errorf("plain VTN: %v %v", resp, err)
+	} else {
+		_ = resp.Body.Close()
+	}
+	must(t, 3, "vtn", "start", "--mqtt-client-auth", "token")
+	must(t, 3, "vtn", "start", "--mqtt", broker, "--mqtt-client-auth", "password")
+	empty := filepath.Join(t.TempDir(), "empty.yaml")
+	writeFile(t, empty, "programs: []\n")
+	must(t, 3, "vtn", "start", "--config", empty, "--anonymous", "--mqtt", broker, "--mqtt-client-auth", "token")
+}

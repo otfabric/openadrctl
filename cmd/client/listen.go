@@ -453,7 +453,7 @@ func (c *listenConfig) runMQTT(ctx context.Context, a *api, s *sink, progress io
 	}
 	method := openadr.MQTTAnonymous
 	if n.MQTT != nil && n.MQTT.Authentication.Method != "" {
-		method = n.MQTT.Authentication.Method
+		method = mqttMethod(n.MQTT.Authentication.Method)
 	}
 	switch {
 	case c.MQTTPasswordFile != "":
@@ -525,6 +525,20 @@ func (c *listenConfig) runMQTT(ctx context.Context, a *api, s *sink, progress io
 	}
 	_, _ = fmt.Fprintf(progress, "listening: %s, %s\n", broker.URL, strings.Join(filters, " "))
 	return s.wait(ctx)
+}
+
+// mqttMethod reads the authentication method a VTN announces for its
+// broker, also as OpenLEADR writes it (OAUTH2BEARERTOKEN).
+func mqttMethod(m string) string {
+	switch strings.ReplaceAll(strings.ToUpper(m), "_", "") {
+	case "OAUTH2BEARERTOKEN":
+		return openadr.MQTTBearerToken
+	case "ANONYMOUS":
+		return openadr.MQTTAnonymous
+	case "CERTIFICATE":
+		return openadr.MQTTCertificate
+	}
+	return m
 }
 
 // interrupted tells whether the command was interrupted, as opposed to

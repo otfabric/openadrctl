@@ -458,9 +458,33 @@ listening: mqtt://127.0.0.1:1883, events/+
 ```
 
 When the VTN announces `OAUTH2_BEARER_TOKEN` at its broker, openadrctl logs in
-with its token; `--mqtt-username` and `--mqtt-password-file` (or
-`OPENADRCTL_MQTT_PASSWORD`) override that, and `--broker` overrides the URL
-(useful when the VTN announces a name only its own network resolves).
+with its client ID and its token; `--mqtt-username` and `--mqtt-password-file`
+(or `OPENADRCTL_MQTT_PASSWORD`) override that, and `--broker` overrides the URL
+(useful when the VTN announces a name only its own network resolves). With
+`vtn start --mqtt-client-auth token` and a broker that checks tokens (EMQX,
+from `scripts/mqtt-token.sh`):
+
+```console
+$ openadrctl bl notifiers
+webhook:    no
+websocket:  no
+mqtt:       mqtt://127.0.0.1:11883
+  auth:     OAUTH2_BEARER_TOKEN
+  username: {clientID}
+
+$ OPENADRCTL_CLIENT_ID=site-42 OPENADRCTL_CLIENT_SECRET=site-42-secret \
+    openadrctl ven listen --via mqtt --topics ven-events:site-42 --count 1
+listening: mqtt://127.0.0.1:11883, vens/site-42/events/+
+2026-10-29T00:28:10Z  mqtt      EVENT        CREATE c1f7474e7b3b63ba50688b425792a095 (for-site-42)
+
+$ OPENADRCTL_MQTT_PASSWORD=guess openadrctl bl listen --via mqtt --topics events --timeout 5s
+error: the broker mqtt://127.0.0.1:11883: not subscribed (a login the broker refuses? see --mqtt-username and --mqtt-password-file): context deadline exceeded
+$ echo $?
+4
+```
+
+The VTN writes a `mqtt_login` record per check: `site-42 allowed`,
+`utility denied`.
 
 ## 9. Polling: events watch
 
@@ -616,8 +640,11 @@ listening: mqtt://127.0.0.1:18883, programs/+
 2026-10-28T23:52:12Z  mqtt      PROGRAM      CREATE ce345b0e-2d87-4055-970b-01addda79bed (mqtt-check)
 ```
 
-OpenLEADR keeps an event that has reports: deleting it is refused with 409
-until the reports are deleted. `scripts/interop.sh` runs all of this, and
+OpenLEADR writes the method `OAUTH2BEARERTOKEN`, where the schema has
+`OAUTH2_BEARER_TOKEN`; openadrctl reads both. It accepts a subscription with
+a callback URL but never posts to it: its VTN has no webhook sender. It keeps
+an event that has reports: deleting it is refused with 409 until the reports
+are deleted. `scripts/interop.sh` runs all of this, and
 more, as 25 checks.
 
 ## 12. Scripting: JSON and exit codes

@@ -68,6 +68,7 @@ type startConfig struct {
 	MQTTUsername     string        `flag:"mqtt-username" env:"OPENADRCTL_VTN_MQTT_USERNAME" desc:"User name at the broker"`
 	MQTTPassword     string        `env:"OPENADRCTL_VTN_MQTT_PASSWORD"`
 	MQTTPublicURL    string        `flag:"mqtt-public-url" env:"OPENADRCTL_VTN_MQTT_PUBLIC_URL" desc:"URL of the broker as clients reach it (default: --mqtt)"`
+	MQTTClientAuth   string        `flag:"mqtt-client-auth" env:"OPENADRCTL_VTN_MQTT_CLIENT_AUTH" desc:"How clients log in to the broker: anonymous, or token (their OAuth2 token as the password, checked by the broker at POST /auth/mqtt)"`
 	ResourceGroups   bool          `flag:"resource-groups" desc:"Serve resource groups (extension, not OpenADR 3.1.0)"`
 	Anonymous        bool          `flag:"anonymous" desc:"Answer requests without a token, for programs and events without targets"`
 	NotifyReads      bool          `flag:"notify-reads" desc:"Notify subscribers of READ when an object is read"`
@@ -91,8 +92,10 @@ generate-config: clients utility (bl) and site-42 (ven), with the secrets writte
 
 Notifications: --webhooks (or --insecure-webhooks for callbacks on this machine), --mqtt
 (a broker of your own: the VTN publishes, the broker is not part of openadrctl), and
---websocket (an extension). With --store and webhooks, notifications that are not yet
-delivered survive a restart.
+--websocket (an extension). --mqtt-client-auth token has clients log in to the broker with
+their OAuth2 token, and serves POST /auth/mqtt for the broker's HTTP authenticator (such as
+EMQX's) to check it. With --store and webhooks, notifications that are not yet delivered
+survive a restart.
 
 Records go to stdout, one per thing that happens: listening, client, seeded, then request
 (with --log-requests), notification, socket_opened, socket_closed and log, and stopped at
@@ -134,6 +137,15 @@ func (c *startConfig) validate() error {
 		if u, err := url.Parse(c.MQTT); err != nil || (u.Scheme != "mqtt" && u.Scheme != "mqtts") || u.Host == "" {
 			return errs.InvalidInput(errs.CodeInvalidURL, fmt.Sprintf("--mqtt %q: an mqtt:// or mqtts:// URL", c.MQTT), err)
 		}
+	}
+	switch c.MQTTClientAuth {
+	case "", "anonymous":
+	case "token":
+		if c.MQTT == "" {
+			return errs.InvalidInput(errs.CodeInvalidFlagCombination, "--mqtt-client-auth token needs --mqtt", nil)
+		}
+	default:
+		return errs.InvalidInput(errs.CodeInvalidInput, fmt.Sprintf("--mqtt-client-auth %q: anonymous or token", c.MQTTClientAuth), nil)
 	}
 	if c.Rate < 0 || c.TokenTTL <= 0 || c.Duration < 0 {
 		return errs.InvalidInput(errs.CodeInvalidInput, "--rate and --duration must not be negative, and --token-ttl must be positive", nil)
@@ -179,6 +191,11 @@ func (r *Record) detail() string {
 		return fmt.Sprintf("%d objects", *r.Count)
 	case "log":
 		return r.Level + " " + r.Message
+	case "mqtt_login":
+		if r.Status == http.StatusOK {
+			return r.Client + " allowed"
+		}
+		return r.Client + " denied"
 	}
 	return r.Message
 }
@@ -353,13 +370,27 @@ func (c *startConfig) run(ctx context.Context, out *format.StreamWriter) (int, e
 			uri = c.MQTT
 		}
 		cfg.MQTT = &server.MQTTConfig{Publisher: publisher, URIs: []string{uri}}
+		if c.MQTTClientAuth == "token" {
+			if len(sd.Clients) == 0 {
+				_ = l.Close()
+				return 0, errs.InvalidInput(errs.CodeInvalidConfig, "--mqtt-client-auth token: the seed has no clients, so no tokens", nil)
+			}
+			cfg.MQTT.Authentication = openadr.MQTTAuthentication{Method: openadr.MQTTBearerToken, Username: "{clientID}"}
+		}
 	}
 	vtn, err := server.New(cfg)
 	if err != nil {
 		_ = l.Close()
 		return 0, errs.InvalidInput(errs.CodeInvalidConfig, err.Error(), err)
 	}
-	hs := &http.Server{Handler: vtn, ReadHeaderTimeout: 5 * time.Second, ErrorLog: log.New(io.Discard, "", 0)}
+	var handler http.Handler = vtn
+	if c.MQTTClientAuth == "token" {
+		mux := http.NewServeMux()
+		mux.Handle("/auth/mqtt", &mqttAuth{issuer: issuer, username: c.MQTTUsername, password: c.MQTTPassword, rec: rec})
+		mux.Handle("/", vtn)
+		handler = mux
+	}
+	hs := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ErrorLog: log.New(io.Discard, "", 0)}
 	if c.TLSCert != "" {
 		l = tls.NewListener(l, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
 	}

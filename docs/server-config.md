@@ -31,6 +31,7 @@ $ openadrctl vtn start --config seed.yaml --store vtn.db --insecure-webhooks --w
 | `--mqtt` | | A broker to publish notifications on (`mqtt://` or `mqtts://`); a broker of your own, not part of openadrctl |
 | `--mqtt-public-url` | `--mqtt` | The broker's URL as clients reach it, announced in `GET /notifiers` |
 | `--mqtt-username` | | User name at the broker; the password comes from `OPENADRCTL_VTN_MQTT_PASSWORD` |
+| `--mqtt-client-auth` | `anonymous` | How clients log in to the broker: `anonymous`, or `token`: the client ID as the user name and the client's OAuth2 token as the password, which the broker checks at `POST /auth/mqtt` (see [MQTT logins by token](#mqtt-logins-by-token)) |
 | `--websocket` | off | Notify over WebSockets (an extension of OpenLEADR and go-openadr) |
 | `--resource-groups` | off | Serve `/resourceGroups` (an extension) |
 | `--anonymous` | off | Answer requests without a token, for programs and events without targets |
@@ -46,6 +47,7 @@ Most flags can come from the environment: `OPENADRCTL_VTN_LISTEN`,
 `OPENADRCTL_VTN_PUBLIC_URL`, `OPENADRCTL_VTN_CONFIG`, `OPENADRCTL_VTN_STORE`,
 `OPENADRCTL_VTN_TLS_CERT`, `OPENADRCTL_VTN_TLS_KEY`, `OPENADRCTL_VTN_MQTT`,
 `OPENADRCTL_VTN_MQTT_PUBLIC_URL`, `OPENADRCTL_VTN_MQTT_USERNAME`,
+`OPENADRCTL_VTN_MQTT_CLIENT_AUTH`,
 `OPENADRCTL_FORMAT`.
 
 The API is at the root of `--public-url`: `/programs`, `/events`,
@@ -157,6 +159,44 @@ $ echo $?
 
 `openadrctl ven listen` and `bl listen` do each of these; see the
 [guide](guide.md#8-notifications-websocket-webhook-mqtt).
+
+### MQTT logins by token
+
+By default the VTN announces its broker with `ANONYMOUS`: who may log in is
+the broker's business. With `--mqtt-client-auth token` it announces
+`OAUTH2_BEARER_TOKEN` with the user name `{clientID}`: a client logs in with
+its client ID and its OAuth2 token, as `openadrctl listen --via mqtt` does by
+itself. For the broker to check the token, the VTN serves `POST /auth/mqtt`,
+in the form the HTTP authenticators of brokers send:
+
+| Request | Answer |
+|---------|--------|
+| `{"username": "site-42", "password": "<token>"}` (JSON, or the same as a form) | `200 {"result": "allow"}` when the token is one this VTN issued to `site-42` and has not expired |
+| `{"username": "vtn", "password": "<OPENADRCTL_VTN_MQTT_PASSWORD>"}` | `200 {"result": "allow"}`: the VTN's own publisher, with `--mqtt-username` |
+| anything else | `403 {"result": "deny"}` |
+
+Each answer is a `mqtt_login` record. The endpoint checks who logs in, not
+which topics they read: a broker that should keep a VEN to its own topics
+needs rules of its own. EMQX, for instance:
+
+```bash
+openadrctl vtn start --listen 0.0.0.0:8080 --public-url http://vtn.example:8080 \
+    --mqtt mqtt://emqx.example:1883 --mqtt-client-auth token --mqtt-username vtn   # OPENADRCTL_VTN_MQTT_PASSWORD set
+
+docker run -d -p 1883:1883 \
+  -e EMQX_AUTHENTICATION__1__MECHANISM=password_based \
+  -e EMQX_AUTHENTICATION__1__BACKEND=http \
+  -e EMQX_AUTHENTICATION__1__METHOD=post \
+  -e EMQX_AUTHENTICATION__1__URL=http://vtn.example:8080/auth/mqtt \
+  -e 'EMQX_AUTHENTICATION__1__BODY={"username":"${username}","password":"${password}"}' \
+  -e 'EMQX_AUTHENTICATION__1__HEADERS={"content-type":"application/json"}' \
+  emqx/emqx:6.3.1
+```
+
+EMQX logs a 403 as an error of its authenticator, and refuses the login.
+When the broker starts before the VTN answers, EMQX marks the authenticator
+unavailable for a few seconds and refuses logins meanwhile; clients and the
+VTN's publisher try again. `scripts/mqtt-token.sh` runs this setup.
 
 ## Records
 

@@ -17,16 +17,20 @@ import (
 	"log/slog"
 	"math/big"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	mochi "github.com/mochi-mqtt/server/v2"
 	mqttauth "github.com/mochi-mqtt/server/v2/hooks/auth"
 	"github.com/mochi-mqtt/server/v2/listeners"
+	"github.com/mochi-mqtt/server/v2/packets"
 )
 
 // result is what a run of openadrctl wrote and returned.
@@ -221,6 +225,48 @@ func writeFile(t *testing.T, path, content string) {
 // startBroker runs an MQTT broker that lets everyone in.
 func startBroker(t *testing.T) string {
 	t.Helper()
+	return serveBroker(t, new(mqttauth.AllowHook))
+}
+
+// tokenHook asks an HTTP authenticator whether a client may log in, as
+// the HTTP authentication of EMQX does: a form POST of the user name and
+// password, allowed on 200.
+type tokenHook struct {
+	mochi.HookBase
+	url atomic.Value // string
+}
+
+func (h *tokenHook) ID() string { return "token" }
+
+func (h *tokenHook) Provides(b byte) bool {
+	return b == mochi.OnConnectAuthenticate || b == mochi.OnACLCheck
+}
+
+func (h *tokenHook) OnConnectAuthenticate(_ *mochi.Client, pk packets.Packet) bool {
+	u, _ := h.url.Load().(string)
+	if u == "" {
+		return false
+	}
+	resp, err := http.PostForm(u, url.Values{"username": {string(pk.Connect.Username)}, "password": {string(pk.Connect.Password)}})
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+func (h *tokenHook) OnACLCheck(*mochi.Client, string, bool) bool { return true }
+
+// startTokenBroker runs an MQTT broker that lets in only those its
+// authenticator allows; set the authenticator's URL with the hook.
+func startTokenBroker(t *testing.T) (string, *tokenHook) {
+	t.Helper()
+	h := new(tokenHook)
+	return serveBroker(t, h), h
+}
+
+func serveBroker(t *testing.T, hook mochi.Hook) string {
+	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -228,7 +274,7 @@ func startBroker(t *testing.T) string {
 	addr := l.Addr().String()
 	_ = l.Close()
 	srv := mochi.New(&mochi.Options{InlineClient: true, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
-	if err := srv.AddHook(new(mqttauth.AllowHook), nil); err != nil {
+	if err := srv.AddHook(hook, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := srv.AddListener(listeners.NewTCP(listeners.Config{ID: "t", Address: addr})); err != nil {

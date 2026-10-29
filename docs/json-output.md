@@ -123,6 +123,7 @@ Every record has `time` and `event`:
 | `notification` | `mechanism` (`webhook`, `mqtt`, `websocket`), `objectType`, `operation` |
 | `socket_opened`, `socket_closed` | A WebSocket of a client; `message`: why it closed |
 | `log` | `level`, `message`: a warning or error of the VTN |
+| `mqtt_login` | `client` (the user name), `status` (200 allowed, 403 denied): a broker asked `POST /auth/mqtt` (`--mqtt-client-auth token`) |
 | `stopped` | The end |
 
 ```console

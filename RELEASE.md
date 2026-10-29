@@ -4,6 +4,64 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.2.0
+
+**Date:** 2026-10-29  
+**Previous release:** v0.1.0
+
+### Summary
+
+MQTT logins by token, tested on a broker that checks them: `vtn start
+--mqtt-client-auth token` has clients log in to the broker with their OAuth2
+token, and serves `POST /auth/mqtt` for the broker's HTTP authenticator to
+check it. `scripts/mqtt-token.sh` runs it on EMQX 6.3.1. Webhook delivery
+from OpenLEADR, untested in v0.1.0, turns out not to exist: its VTN has no
+webhook sender.
+
+### Added
+
+- **`vtn start --mqtt-client-auth anonymous|token`** (or
+  `OPENADRCTL_VTN_MQTT_CLIENT_AUTH`): with `token`, `GET /notifiers` announces
+  `OAUTH2_BEARER_TOKEN` with the user name `{clientID}`, and the VTN serves
+  **`POST /auth/mqtt`**: a JSON or form login, answered `200
+  {"result":"allow"}` for a token the VTN issued to that client ID or for the
+  VTN's own publisher (`--mqtt-username`, `OPENADRCTL_VTN_MQTT_PASSWORD`), and
+  `403 {"result":"deny"}` otherwise. Each answer is a **`mqtt_login`** record.
+  Needs `--mqtt` and a seed with clients (exit 3 otherwise).
+- **`scripts/mqtt-token.sh`:** `vtn start` with EMQX 6.3.1 as the broker, its
+  HTTP authenticator pointed at `/auth/mqtt`.
+
+### Changed
+
+- **`listen --via mqtt`** reads the authentication method `OAUTH2BEARERTOKEN`,
+  as OpenLEADR writes it, as `OAUTH2_BEARER_TOKEN`, and logs in with the
+  client's token for it too.
+
+### Verification
+
+- `make check` (coverage 90 %), and the race tests on Linux with Go 1.26.
+- A new test runs `vtn start --mqtt-client-auth token` with a broker that asks
+  `/auth/mqtt` for every login: Business Logic and a VEN receive
+  notifications with their tokens, a password that is not a token exits 4,
+  the VTN's publisher logs in as itself, and the endpoint answers JSON, forms,
+  another client's token, a wrong method and bad JSON as documented.
+- `scripts/mqtt-token.sh` on EMQX 6.3.1: 5 checks passed.
+- `scripts/interop.sh` against OpenLEADR (openadr-interop v0.4.0): 25 checks
+  passed.
+- Webhook delivery from OpenLEADR v0.2.7: a subscription with a callback the
+  container reaches is accepted, and nothing is posted to it; its source has
+  no webhook sender (its only HTTP client fetches JWKS keys).
+
+### Known limitations
+
+- `/auth/mqtt` checks who logs in, not which topics they subscribe to: keeping
+  a VEN to its own topics is for the broker's rules.
+- Webhook delivery is tested against openadrctl's own VTN only: no other open
+  VTN in openadr-interop sends webhooks.
+- Not tested against an OpenADR 3.0.1 VTN. OpenADR 2.0 is not supported.
+
+---
+
 ## v0.1.0
 
 **Date:** 2026-10-29  

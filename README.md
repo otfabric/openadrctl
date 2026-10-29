@@ -150,7 +150,7 @@ production server.
 | **Searches** | Every page by default, or one (`--skip`, `--limit`); filters as the API has them (`--program`, `--event`, `--target`, `--client-name`, `--name`, `--ven`) |
 | **Notifications** | `listen --via webhook` (a listener of its own, http or https), `--via mqtt` (broker and topics from the VTN, 12 topic sets), `--via websocket`; the subscription is deleted at the end unless `--keep` |
 | **Polling** | `events watch`: present, created, updated and deleted events, for any VTN |
-| **VTN** (`vtn start`) | The OpenADR 3.1.0 API from a seed file, an OAuth2 token endpoint with `bl` and `ven` clients, webhooks, MQTT (to your broker), WebSockets, resource groups, anonymous reads, rate limits, a store kept in a file, DNS-SD advertisement, https, one record per request and notification |
+| **VTN** (`vtn start`) | The OpenADR 3.1.0 API from a seed file, an OAuth2 token endpoint with `bl` and `ven` clients, webhooks, MQTT (to your broker, with clients logging in by token if you like: `--mqtt-client-auth token` and `POST /auth/mqtt` for the broker), WebSockets, resource groups, anonymous reads, rate limits, a store kept in a file, DNS-SD advertisement, https, one record per request and notification |
 | **Tools** | `ping` (connect, TLS, token, API, notifiers), `token`, `discover` (DNS-SD), `validate` (objects against the schema, misspelt properties included), `timeline` (an event file, offline) |
 | **Connection** | Client credentials with token discovery (`GET /auth/server`) or a bearer token, custom CAs, mutual TLS, retries with backoff for what another attempt can cure, a timeout per command |
 
@@ -372,7 +372,7 @@ sets the VTN and the client once.
 | `OPENADRCTL_MQTT_PASSWORD` | (no flag: the MQTT password of `listen`) |
 | `OPENADRCTL_DISCOVER_WAIT` | `--wait` of `discover` |
 | `OPENADRCTL_VTN_LISTEN`, `OPENADRCTL_VTN_PUBLIC_URL`, `OPENADRCTL_VTN_CONFIG`, `OPENADRCTL_VTN_STORE`, `OPENADRCTL_VTN_TLS_CERT`, `OPENADRCTL_VTN_TLS_KEY` | `--listen`, `--public-url`, `--config`, `--store`, `--tls-cert`, `--tls-key` of `vtn start` |
-| `OPENADRCTL_VTN_MQTT`, `OPENADRCTL_VTN_MQTT_PUBLIC_URL`, `OPENADRCTL_VTN_MQTT_USERNAME` | `--mqtt`, `--mqtt-public-url`, `--mqtt-username` of `vtn start` |
+| `OPENADRCTL_VTN_MQTT`, `OPENADRCTL_VTN_MQTT_PUBLIC_URL`, `OPENADRCTL_VTN_MQTT_USERNAME`, `OPENADRCTL_VTN_MQTT_CLIENT_AUTH` | `--mqtt`, `--mqtt-public-url`, `--mqtt-username`, `--mqtt-client-auth` of `vtn start` |
 | `OPENADRCTL_VTN_MQTT_PASSWORD` | (no flag: the password of `vtn start` at its broker) |
 
 </details>
@@ -483,6 +483,16 @@ events, reports, a VEN's token refused (403), events watch, and notifications
 by WebSocket and by MQTT on the image's broker. The [guide](docs/guide.md)
 shows part of that run.
 
+`scripts/mqtt-token.sh` runs MQTT with the clients' OAuth2 tokens on
+[EMQX](https://www.emqx.io/) 6.3.1, whose HTTP authenticator checks every
+login with `vtn start` (5 checks: Business Logic and a VEN receive with their
+tokens, a password that is not a token is refused).
+
+Webhook delivery is tested against openadrctl's own VTN only. OpenLEADR
+v0.2.7 accepts a subscription with a callback URL but never posts to it (its
+VTN has no webhook sender, and does not announce `WEBHOOK` in
+`GET /notifiers`), and the ElaadNL client is a client only.
+
 ## Limitations
 
 - **`vtn start` is a test VTN.** Its clients and secrets come from the seed;
@@ -528,6 +538,7 @@ make check               # format, vet, lint, tests with the race detector, cove
 make build               # checks, then bin/openadrctl
 make build-all           # every release platform
 scripts/interop.sh       # against the OpenLEADR VTN (Docker)
+scripts/mqtt-token.sh    # MQTT logins by token, on EMQX (Docker)
 ```
 
 The tests run the real command tree (`cmd.Run`) against `vtn start` on a free
