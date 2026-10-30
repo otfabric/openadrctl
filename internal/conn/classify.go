@@ -60,7 +60,7 @@ func Classify(err error, write bool) error {
 	var valErr *openadr.ValidationError
 	switch {
 	case errors.Is(err, context.Canceled):
-		return errs.New(errs.KindInternal, errs.CodeContextCanceled, "interrupted", err)
+		return errs.New(errs.KindInterrupted, errs.CodeContextCanceled, "interrupted", err)
 	case errors.As(err, &tokErr):
 		d := HTTPDetail{Status: tokErr.StatusCode, OAuthError: tokErr.Code}
 		code := errs.CodeTokenRefused

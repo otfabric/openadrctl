@@ -12,7 +12,8 @@ const (
 	KindTimeout      Kind = "timeout"
 	KindProtocol     Kind = "protocol"
 	// KindNegative is a request the server answered and refused: a 4xx or 5xx.
-	KindNegative Kind = "refused"
-	KindOutput   Kind = "output"
-	KindInternal Kind = "internal"
+	KindNegative    Kind = "refused"
+	KindOutput      Kind = "output"
+	KindInternal    Kind = "internal"
+	KindInterrupted Kind = "interrupted"
 )

@@ -369,7 +369,7 @@ sets the VTN and the client once.
 | `OPENADRCTL_CA`, `OPENADRCTL_CERT`, `OPENADRCTL_KEY` | `--ca`, `--cert`, `--key` |
 | `OPENADRCTL_INSECURE` | `--insecure` |
 | `OPENADRCTL_TIMEOUT`, `OPENADRCTL_RETRIES` | `--timeout`, `--retries` |
-| `OPENADRCTL_FORMAT` | `--format` |
+| `OPENADRCTL_FORMAT` (`OPENADRCTL_OUTPUT_FORMAT` stays accepted) | `--format` |
 | `OPENADRCTL_VIA`, `OPENADRCTL_LISTEN`, `OPENADRCTL_CALLBACK_URL` | `--via`, `--listen`, `--callback-url` of `listen` |
 | `OPENADRCTL_MQTT_BROKER`, `OPENADRCTL_MQTT_CLIENT_ID`, `OPENADRCTL_MQTT_USERNAME`, `OPENADRCTL_MQTT_PASSWORD_FILE`, `OPENADRCTL_MQTT_CA` | the `--broker` and `--mqtt-*` flags of `listen` |
 | `OPENADRCTL_MQTT_PASSWORD` | (no flag: the MQTT password of `listen`) |
@@ -400,6 +400,7 @@ event, JSON Lines with `--format json`. Progress and diagnostics go to stderr.
 | 5 | Timeout: no answer in `--timeout` |
 | 6 | The VTN refused (an HTTP error, a token refused) or broke the protocol |
 | 10 | Output or internal error |
+| 130 | Interrupted before a result |
 
 Details, error codes and the JSON error object: [docs/exitcodes.md](docs/exitcodes.md).
 

@@ -4,6 +4,29 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.4.0
+
+**Date:** unreleased
+**Previous release:** v0.3.0
+
+### Summary
+
+**Breaking for scripts:** the exit codes follow the OT Fabric organisation table (ADR-0006 of otfabric/engineering). Nothing else changes in the commands.
+
+### Exit codes
+
+| Case | Old | New | JSON error |
+|---|---|---|---|
+| `context_canceled` (interrupted before a result) | 10 | 130 | kind `interrupted`, was `internal` |
+
+Every other exit code is unchanged. See [docs/exitcodes.md](docs/exitcodes.md).
+
+### Environment
+
+`OPENADRCTL_FORMAT` is now the canonical name of the format variable; `OPENADRCTL_OUTPUT_FORMAT` stays accepted, and `OPENADRCTL_FORMAT` wins when both are set.
+
+---
+
 ## v0.3.0
 
 **Date:** 2026-10-29  
