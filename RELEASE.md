@@ -6,7 +6,7 @@ version below, up to the `---` that ends it, is the release's notes.
 
 ## v0.4.0
 
-**Date:** unreleased
+**Date:** 2026-10-30
 **Previous release:** v0.3.0
 
 ### Summary
