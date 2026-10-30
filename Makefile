@@ -34,7 +34,7 @@ run: ## Run the application.
 	go run -ldflags "$(LDFLAGS)" .
 
 .PHONY: check
-check: fmt-check vet lint test coverage ## Run all checks (format, vet, lint, test, coverage)
+check: fmt-check vet lint vuln test coverage ## Run all checks (format, vet, lint, test, coverage)
 
 .PHONY: test
 test: ## Run tests.
@@ -105,6 +105,16 @@ build-all: ## Build for all target architectures.
 
 .PHONY: release-all
 release-all: check build-all ## Build release binaries for all architectures.
+
+.PHONY: vuln
+vuln: ## Scan the module and its dependencies for known vulnerabilities (govulncheck)
+	@govulncheck ./...
+
+.PHONY: e2e
+e2e: ## Build the binary and run the e2e suite against it
+	@mkdir -p bin
+	@go build -ldflags "$(LDFLAGS)" -o bin/openadrctl .
+	@OPENADRCTL_E2E_BIN=$(CURDIR)/bin/openadrctl OPENADRCTL_E2E_VERSION=$(VERSION) go test -count=1 -tags=e2e ./e2e/...
 
 .PHONY: install
 install: ## Install the binary to GOPATH/bin.
