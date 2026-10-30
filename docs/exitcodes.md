@@ -14,7 +14,8 @@ modbusctl, …).
 | 5 | `timeout` | No answer in `--timeout` |
 | 6 | `refused` | The VTN answered with an HTTP error (4xx or 5xx), or its token endpoint refused the client; the `openadr` object has the status and the VTN's problem object |
 | 6 | `protocol` | The VTN broke the protocol: an answer that does not decode as OpenADR 3.1.0, a token endpoint that issues no bearer token |
-| 10 | `output`, `internal` | The result could not be written, or openadrctl failed; also an interruption (Ctrl-C) before a one-shot command has its result |
+| 10 | `output`, `internal` | The result could not be written, or openadrctl failed |
+| 130 | `interrupted` | Ctrl-C or SIGTERM before a one-shot command has its result |
 
 `refused` and `protocol` both exit 6: the VTN was reached and talked to, and
 the answer is not what the command needed.
@@ -70,7 +71,8 @@ With `--format text` or `table` it is one line on stderr: `error: <message>`.
 | `refused` | `bad_request` (400), `unauthorized` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `too_many_requests` (429), `not_implemented` (501, or no MQTT broker announced), `unavailable` (503), `server_error` (other 5xx), `http_error` (any other status), `token_refused` (the token endpoint refused the credentials) |
 | `protocol` | `invalid_response` |
 | `output` | `json_encode_failed`, `table_render_failed`, `output_write_failed`, `output_file_write_failed` |
-| `internal` | `context_canceled` (interrupted before a result), `internal_unexpected` |
+| `internal` | `internal_unexpected` |
+| `interrupted` | `context_canceled` (interrupted before a result) |
 
 ## Streaming commands
 
@@ -113,3 +115,7 @@ you resend. An update or delete is the same each time, and is retried.
 Events need `--yes` to be created or changed, and every object needs it to
 be deleted: exit 2 with `confirmation_required` otherwise. `--dry-run` shows
 the object a create or update would send, and sends nothing.
+
+**Organisation table:** these codes follow the OT Fabric CLI exit-code table. openadrctl does not use `1`, `7`, `8` and `9`: they keep their organisation meaning and are not reused for anything else.
+
+**Format variable:** `OPENADRCTL_FORMAT` is the name to use; `OPENADRCTL_OUTPUT_FORMAT` stays accepted. When both are set, `OPENADRCTL_FORMAT` wins.
