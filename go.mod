@@ -4,7 +4,7 @@ go 1.26.8
 
 require (
 	github.com/mochi-mqtt/server/v2 v2.7.9
-	github.com/otfabric/go-openadr v0.5.0
+	github.com/otfabric/go-openadr v0.5.1
 	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1
 )
