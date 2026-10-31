@@ -24,6 +24,9 @@ LDFLAGS = -s -w \
 
 # Minimum total statement coverage (percent) enforced by `make coverage`.
 COVERAGE_MIN ?= 85
+# Per-package floor (TEST-012), over the same coverage.out.
+COVER_PKG_MIN := 80
+FUZZTIME ?= 30s
 
 .PHONY: help
 help: ## Show this help.
@@ -34,7 +37,7 @@ run: ## Run the application.
 	go run -ldflags "$(LDFLAGS)" .
 
 .PHONY: check
-check: fmt-check vet lint vuln test coverage ## Run all checks (format, vet, lint, test, coverage)
+check: fmt-check vet lint vuln test coverage coverage-pkg-check ## Run all checks (format, vet, lint, test, coverage)
 
 .PHONY: test
 test: ## Run tests.
@@ -44,7 +47,7 @@ test: ## Run tests.
 stress: ## Run tests with -count=10 for stress testing.
 	go test -race -count=10 ./...
 
-.PHONY: coverage
+.PHONY: coverage coverage-pkg-check fuzz
 coverage: ## Run tests with whole-module coverage (writes coverage.out); fails below COVERAGE_MIN percent
 	@echo "Running tests with coverage"
 	@go test -count=1 -race -coverprofile=coverage.out -covermode=atomic -coverpkg=./... ./...
@@ -52,6 +55,20 @@ coverage: ## Run tests with whole-module coverage (writes coverage.out); fails b
 	echo "Total coverage: $$total% (minimum $(COVERAGE_MIN)%)"; \
 	awk -v t="$$total" -v m="$(COVERAGE_MIN)" 'BEGIN { exit (t + 0 < m + 0) ? 1 : 0 }' || \
 		{ echo "coverage $$total% is below $(COVERAGE_MIN)%"; exit 1; }
+
+.PHONY: coverage-pkg-check fuzz
+coverage-pkg-check: coverage ## Fail when a package is below COVER_PKG_MIN (reads coverage.out)
+	@awk -v m="$(COVER_PKG_MIN)" 'NR > 1 { n[$$1] = $$2; if ($$3 > 0) h[$$1] = 1 } \
+	END { for (k in n) { p = k; sub(/\/[^\/]*$$/, "", p); s[p] += n[k]; if (k in h) c[p] += n[k] } \
+	for (p in s) { v = 100 * c[p] / s[p]; if (v < m) { printf "%s: %.1f%% < %s%%\n", p, v, m; bad = 1 } } exit bad }' coverage.out
+
+fuzz: ## Run every fuzz target for FUZZTIME (targets discovered, never listed)
+	@for pkg in $$(go list ./...); do \
+		for t in $$(go test -list '^Fuzz' $$pkg | grep '^Fuzz'); do \
+			echo "fuzz $$pkg $$t"; \
+			go test -run '^$$' -fuzz "^$$t$$" -fuzztime $(FUZZTIME) $$pkg || exit 1; \
+		done; \
+	done
 
 .PHONY: cover
 cover: coverage ## Run tests with coverage and open HTML report.
