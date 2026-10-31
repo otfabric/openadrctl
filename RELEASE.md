@@ -4,6 +4,17 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.4.2
+
+**Date:** 2026-10-31
+**Previous release:** v0.4.1
+
+### Changed
+
+- Test only: the broker helper no longer hangs in a mochi 2.7.9 deadlock at shutdown.
+
+---
+
 ## v0.4.1
 
 **Date:** 2026-10-31
