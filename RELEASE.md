@@ -4,6 +4,18 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.4.1
+
+**Date:** 2026-10-31
+**Previous release:** v0.4.0
+
+### Changed
+
+- `make build` writes to `bin/`, no longer the repository root. Fuzz targets and a coverage floor added.
+- Built on go-openadr v0.5.1.
+
+---
+
 ## v0.4.0
 
 **Date:** 2026-10-30
