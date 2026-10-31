@@ -101,11 +101,11 @@ vet: ## Run go vet.
 
 .PHONY: build
 build: check ## Build the binary (with checks).
-	go build -ldflags "$(LDFLAGS)" -o $(APP_NAME) .
+	go build -ldflags "$(LDFLAGS)" -o bin/$(APP_NAME) .
 
 .PHONY: build-nocheck
 build-nocheck: ## Build the binary (without checks).
-	go build -ldflags "$(LDFLAGS)" -o $(APP_NAME) .
+	go build -ldflags "$(LDFLAGS)" -o bin/$(APP_NAME) .
 
 .PHONY: build-all
 build-all: ## Build for all target architectures.
