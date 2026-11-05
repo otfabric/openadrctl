@@ -4,6 +4,20 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.5.1
+
+**Date:** 2026-11-05
+**Previous release:** v0.5.0
+
+### Fixed
+
+- `--value` and `--attribute` take a number only when it is written in decimal, as JSON writes numbers.
+  - `0x1p3` was sent as the number 8; `0x1p3`, `1_000`, `Inf` and `NaN` are now sent as text, which OpenADR allows a value to be. `Inf` and `NaN` used to be refused as an invalid object (exit 3).
+  - A decimal too large for a number, such as `1e400`, was sent as the text "1e400". It is now refused with exit 3 `invalid_input`. Before, it exited 0.
+  - The same rules hold for each part of an `x:y` point.
+
+---
+
 ## v0.5.0
 
 **Date:** 2026-11-05

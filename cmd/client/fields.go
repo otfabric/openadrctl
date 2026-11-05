@@ -3,9 +3,12 @@
 package client
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,21 +28,47 @@ func bad(flag string, format string, a ...any) error {
 
 // parseValue reads a value of a payload: a number, true or false, x:y for a
 // point, or else a string.
-func parseValue(s string) openadr.Value {
-	if f, err := strconv.ParseFloat(s, 64); err == nil {
-		return openadr.Number(f)
+//
+// A number is written in decimal, as JSON writes numbers (a sign, a
+// leading or trailing point and an exponent are taken too): what is not,
+// such as 0x1p3, Inf, NaN or 1_000, is text, as OpenADR allows a value to
+// be. A decimal no float64 holds, such as 1e400, is refused rather than
+// sent as text.
+func parseValue(flag, s string) (openadr.Value, error) {
+	if f, ok, err := parseNumber(flag, s); ok || err != nil {
+		return openadr.Number(f), err
 	}
-	if b, err := strconv.ParseBool(s); err == nil && (s == "true" || s == "false") {
-		return openadr.Bool(b)
+	if s == "true" || s == "false" {
+		return openadr.Bool(s == "true"), nil
 	}
-	if x, y, ok := strings.Cut(s, ":"); ok {
-		fx, errx := strconv.ParseFloat(x, 64)
-		fy, erry := strconv.ParseFloat(y, 64)
-		if errx == nil && erry == nil {
-			return openadr.PointValue(fx, fy)
+	if x, y, found := strings.Cut(s, ":"); found {
+		fx, okx, errx := parseNumber(flag, x)
+		fy, oky, erry := parseNumber(flag, y)
+		if errx != nil || erry != nil {
+			return openadr.Value{}, cmp.Or(errx, erry)
+		}
+		if okx && oky {
+			return openadr.PointValue(fx, fy), nil
 		}
 	}
-	return openadr.String(s)
+	return openadr.String(s), nil
+}
+
+// decimal is the notation of a number of a value.
+var decimal = regexp.MustCompile(`^[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?$`)
+
+// parseNumber reads s as a number when it is written as a decimal one; ok
+// is false when it is not. A decimal beyond the range of a float64 is an
+// error.
+func parseNumber(flag, s string) (f float64, ok bool, err error) {
+	if !decimal.MatchString(s) {
+		return 0, false, nil
+	}
+	f, err = strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false, bad(flag, "%q is a number larger than a value holds (%.3g)", s, math.MaxFloat64)
+	}
+	return f, true, nil
 }
 
 // parseValuesMaps reads TYPE=v1,v2 flags.
@@ -52,7 +81,11 @@ func parseValuesMaps(flag string, specs []string) ([]openadr.ValuesMap, error) {
 		}
 		m := openadr.ValuesMap{Type: typ}
 		for v := range strings.SplitSeq(vals, ",") {
-			m.Values = append(m.Values, parseValue(strings.TrimSpace(v)))
+			value, err := parseValue(flag, strings.TrimSpace(v))
+			if err != nil {
+				return nil, err
+			}
+			m.Values = append(m.Values, value)
 		}
 		out = append(out, m)
 	}
@@ -99,7 +132,7 @@ type intervals struct {
 func (iv *intervals) register(cmd *cobra.Command, what string) {
 	f := cmd.Flags()
 	f.StringVar(&iv.typ, "type", "", "Payload type of the "+what+", such as PRICE, SIMPLE or USAGE")
-	f.StringSliceVar(&iv.values, "value", nil, "A value per interval, in order (repeatable; a number, true/false, x:y or text)")
+	f.StringSliceVar(&iv.values, "value", nil, "A value per interval, in order (repeatable; a decimal number, true/false, x:y or text)")
 	f.StringVar(&iv.start, "start", "", "Start of the first interval: now, or RFC 3339")
 	f.StringVar(&iv.duration, "interval", "", "Length of each interval: PT15M, 1h, ...")
 	f.StringVar(&iv.csv, "csv", "", "Intervals from a timeline CSV (interval,start,end,type,values; see openadrctl timeline)")
@@ -161,7 +194,11 @@ func (iv *intervals) build() (*openadr.IntervalPeriod, []openadr.Interval, error
 	}
 	out := make([]openadr.Interval, 0, len(iv.values))
 	for i, v := range iv.values {
-		out = append(out, openadr.Interval{ID: int32(i), Payloads: []openadr.ValuesMap{{Type: iv.typ, Values: []openadr.Value{parseValue(v)}}}})
+		value, err := parseValue("value", v)
+		if err != nil {
+			return nil, nil, err
+		}
+		out = append(out, openadr.Interval{ID: int32(i), Payloads: []openadr.ValuesMap{{Type: iv.typ, Values: []openadr.Value{value}}}})
 	}
 	return period, out, nil
 }

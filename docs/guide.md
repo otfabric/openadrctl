@@ -226,6 +226,18 @@ $ echo $?
 2
 ```
 
+A value is a number written in decimal (`0.35`, `-2`, `1e3`), `true` or
+`false`, `x:y` for a point, or else text. JSON has no hexadecimal, infinite
+or NaN numbers, so `0x1p3`, `Inf` and `NaN` are sent as text. A decimal too
+large for a number is refused rather than sent as text:
+
+```console
+$ openadrctl bl events create --program dynamic-price --type PRICE --value 1e400 --dry-run
+error: --value: "1e400" is a number larger than a value holds (1.8e+308)
+```
+
+`--attribute TYPE=v1,v2` reads its values the same way.
+
 A price curve from a CSV file, in the form `timeline --csv` writes, asking
 VENs for a `USAGE` report:
 
