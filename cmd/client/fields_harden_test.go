@@ -5,6 +5,7 @@ package client
 import (
 	"bytes"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,7 +82,13 @@ func FuzzFlagValues(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
-		_ = parseValue(s)
+		if v, err := parseValue("value", s); err != nil {
+			if _, ok := errs.As(err); !ok {
+				t.Fatalf("parseValue(%q): %v is not an errs.Error", s, err)
+			}
+		} else if n, isNum := v.Number(); isNum && (math.IsNaN(n) || math.IsInf(n, 0)) {
+			t.Fatalf("parseValue(%q) = %v, not a JSON number", s, n)
+		}
 		if m, err := parseValuesMaps("attribute", []string{s}); err != nil {
 			if _, ok := errs.As(err); !ok {
 				t.Fatalf("parseValuesMaps(%q): %v is not an errs.Error", s, err)
