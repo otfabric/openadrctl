@@ -506,7 +506,7 @@ func newGenerateConfigCmd() *cobra.Command {
 // oneLine puts the problems of a seed on one line.
 func oneLine(err error) string {
 	var parts []string
-	for _, l := range strings.Split(err.Error(), "\n") {
+	for l := range strings.SplitSeq(err.Error(), "\n") {
 		if l = strings.Join(strings.Fields(l), " "); l != "" && !strings.HasSuffix(l, "unmarshal errors:") {
 			parts = append(parts, l)
 		}

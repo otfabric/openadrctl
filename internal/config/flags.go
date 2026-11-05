@@ -16,7 +16,7 @@ import (
 // Numeric and bool fields use reflect.Value.Addr().Interface().(*T) with the matching
 // pflag *Var function — no unsafe.Pointer casts. Supported kinds: string, bool, []string,
 // uint8–uint64, int, int8–int64, uint, float64 and time.Duration.
-func RegisterFlags(cmd *cobra.Command, cfg interface{}) {
+func RegisterFlags(cmd *cobra.Command, cfg any) {
 	v := reflect.ValueOf(cfg).Elem()
 	t := v.Type()
 
@@ -40,37 +40,50 @@ func RegisterFlags(cmd *cobra.Command, cfg interface{}) {
 		}
 
 		fv := v.Field(i)
-		if field.Type == reflect.TypeOf(time.Duration(0)) {
+		if field.Type == reflect.TypeFor[time.Duration]() {
 			cmd.Flags().DurationVar(fv.Addr().Interface().(*time.Duration), flagName, time.Duration(fv.Int()), desc)
 			continue
 		}
 		switch field.Type.Kind() {
 		case reflect.String:
-			cmd.Flags().StringVar(fv.Addr().Interface().(*string), flagName, fv.String(), desc)
+			p := fv.Addr().Interface().(*string)
+			cmd.Flags().StringVar(p, flagName, *p, desc)
 		case reflect.Uint8:
-			cmd.Flags().Uint8Var(fv.Addr().Interface().(*uint8), flagName, uint8(fv.Uint()), desc)
+			p := fv.Addr().Interface().(*uint8)
+			cmd.Flags().Uint8Var(p, flagName, *p, desc)
 		case reflect.Uint16:
-			cmd.Flags().Uint16Var(fv.Addr().Interface().(*uint16), flagName, uint16(fv.Uint()), desc)
+			p := fv.Addr().Interface().(*uint16)
+			cmd.Flags().Uint16Var(p, flagName, *p, desc)
 		case reflect.Uint32:
-			cmd.Flags().Uint32Var(fv.Addr().Interface().(*uint32), flagName, uint32(fv.Uint()), desc)
+			p := fv.Addr().Interface().(*uint32)
+			cmd.Flags().Uint32Var(p, flagName, *p, desc)
 		case reflect.Uint64:
-			cmd.Flags().Uint64Var(fv.Addr().Interface().(*uint64), flagName, fv.Uint(), desc)
+			p := fv.Addr().Interface().(*uint64)
+			cmd.Flags().Uint64Var(p, flagName, *p, desc)
 		case reflect.Uint:
-			cmd.Flags().UintVar(fv.Addr().Interface().(*uint), flagName, uint(fv.Uint()), desc)
+			p := fv.Addr().Interface().(*uint)
+			cmd.Flags().UintVar(p, flagName, *p, desc)
 		case reflect.Int:
-			cmd.Flags().IntVar(fv.Addr().Interface().(*int), flagName, int(fv.Int()), desc)
+			p := fv.Addr().Interface().(*int)
+			cmd.Flags().IntVar(p, flagName, *p, desc)
 		case reflect.Int8:
-			cmd.Flags().Int8Var(fv.Addr().Interface().(*int8), flagName, int8(fv.Int()), desc)
+			p := fv.Addr().Interface().(*int8)
+			cmd.Flags().Int8Var(p, flagName, *p, desc)
 		case reflect.Int16:
-			cmd.Flags().Int16Var(fv.Addr().Interface().(*int16), flagName, int16(fv.Int()), desc)
+			p := fv.Addr().Interface().(*int16)
+			cmd.Flags().Int16Var(p, flagName, *p, desc)
 		case reflect.Int32:
-			cmd.Flags().Int32Var(fv.Addr().Interface().(*int32), flagName, int32(fv.Int()), desc)
+			p := fv.Addr().Interface().(*int32)
+			cmd.Flags().Int32Var(p, flagName, *p, desc)
 		case reflect.Int64:
-			cmd.Flags().Int64Var(fv.Addr().Interface().(*int64), flagName, fv.Int(), desc)
+			p := fv.Addr().Interface().(*int64)
+			cmd.Flags().Int64Var(p, flagName, *p, desc)
 		case reflect.Float64:
-			cmd.Flags().Float64Var(fv.Addr().Interface().(*float64), flagName, fv.Float(), desc)
+			p := fv.Addr().Interface().(*float64)
+			cmd.Flags().Float64Var(p, flagName, *p, desc)
 		case reflect.Bool:
-			cmd.Flags().BoolVar(fv.Addr().Interface().(*bool), flagName, fv.Bool(), desc)
+			p := fv.Addr().Interface().(*bool)
+			cmd.Flags().BoolVar(p, flagName, *p, desc)
 		case reflect.Slice:
 			if field.Type.Elem().Kind() != reflect.String {
 				panic(fmt.Sprintf("config.RegisterFlags: field %s: flag %q only supports []string slices", field.Name, flagName))

@@ -79,7 +79,7 @@ func decode[T any](t *testing.T, r result) T {
 func lines(t *testing.T, s string) []map[string]any {
 	t.Helper()
 	var out []map[string]any
-	for _, line := range strings.Split(strings.TrimSpace(s), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(s), "\n") {
 		if line == "" {
 			continue
 		}

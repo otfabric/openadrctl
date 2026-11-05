@@ -49,7 +49,7 @@ func parseValuesMaps(flag string, specs []string) ([]openadr.ValuesMap, error) {
 			return nil, bad(flag, "%q: TYPE=value[,value...]", s)
 		}
 		m := openadr.ValuesMap{Type: typ}
-		for _, v := range strings.Split(vals, ",") {
+		for v := range strings.SplitSeq(vals, ",") {
 			m.Values = append(m.Values, parseValue(strings.TrimSpace(v)))
 		}
 		out = append(out, m)
