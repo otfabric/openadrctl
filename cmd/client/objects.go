@@ -343,8 +343,7 @@ func classifyLocal(err error) error {
 	if _, ok := errs.As(err); ok {
 		return err
 	}
-	var valErr *openadr.ValidationError
-	if errors.As(err, &valErr) {
+	if _, ok := errors.AsType[*openadr.ValidationError](err); ok {
 		// With the property at fault, as for an object a VTN was to get.
 		return conn.Classify(err, false)
 	}

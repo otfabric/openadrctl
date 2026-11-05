@@ -13,10 +13,12 @@ import (
 // RegisterFlags binds cobra flags to tagged fields on cfg (pointer to struct).
 // An embedded struct of flags must be of an exported type: reflect cannot
 // take the address of the fields of an unexported one.
-// Numeric and bool fields use reflect.Value.Addr().Interface().(*T) with the matching
-// pflag *Var function — no unsafe.Pointer casts. Supported kinds: string, bool, []string,
-// uint8–uint64, int, int8–int64, uint, float64 and time.Duration.
-func RegisterFlags(cmd *cobra.Command, cfg interface{}) {
+// Fields are bound through a *T of their kind with the matching pflag *Var function,
+// converted with reflect (no unsafe.Pointer casts), so that a field of a named type
+// (type Port uint16) binds as its kind does instead of panicking on a type assertion.
+// Supported kinds: string, bool, []string, uint8–uint64, int, int8–int64, uint, float64
+// and time.Duration.
+func RegisterFlags(cmd *cobra.Command, cfg any) {
 	v := reflect.ValueOf(cfg).Elem()
 	t := v.Type()
 
@@ -40,49 +42,66 @@ func RegisterFlags(cmd *cobra.Command, cfg interface{}) {
 		}
 
 		fv := v.Field(i)
-		if field.Type == reflect.TypeOf(time.Duration(0)) {
-			cmd.Flags().DurationVar(fv.Addr().Interface().(*time.Duration), flagName, time.Duration(fv.Int()), desc)
+		if field.Type == reflect.TypeFor[time.Duration]() {
+			p := addr[time.Duration](fv)
+			cmd.Flags().DurationVar(p, flagName, *p, desc)
 			continue
 		}
 		switch field.Type.Kind() {
 		case reflect.String:
-			cmd.Flags().StringVar(fv.Addr().Interface().(*string), flagName, fv.String(), desc)
+			p := addr[string](fv)
+			cmd.Flags().StringVar(p, flagName, *p, desc)
 		case reflect.Uint8:
-			cmd.Flags().Uint8Var(fv.Addr().Interface().(*uint8), flagName, uint8(fv.Uint()), desc)
+			p := addr[uint8](fv)
+			cmd.Flags().Uint8Var(p, flagName, *p, desc)
 		case reflect.Uint16:
-			cmd.Flags().Uint16Var(fv.Addr().Interface().(*uint16), flagName, uint16(fv.Uint()), desc)
+			p := addr[uint16](fv)
+			cmd.Flags().Uint16Var(p, flagName, *p, desc)
 		case reflect.Uint32:
-			cmd.Flags().Uint32Var(fv.Addr().Interface().(*uint32), flagName, uint32(fv.Uint()), desc)
+			p := addr[uint32](fv)
+			cmd.Flags().Uint32Var(p, flagName, *p, desc)
 		case reflect.Uint64:
-			cmd.Flags().Uint64Var(fv.Addr().Interface().(*uint64), flagName, fv.Uint(), desc)
+			p := addr[uint64](fv)
+			cmd.Flags().Uint64Var(p, flagName, *p, desc)
 		case reflect.Uint:
-			cmd.Flags().UintVar(fv.Addr().Interface().(*uint), flagName, uint(fv.Uint()), desc)
+			p := addr[uint](fv)
+			cmd.Flags().UintVar(p, flagName, *p, desc)
 		case reflect.Int:
-			cmd.Flags().IntVar(fv.Addr().Interface().(*int), flagName, int(fv.Int()), desc)
+			p := addr[int](fv)
+			cmd.Flags().IntVar(p, flagName, *p, desc)
 		case reflect.Int8:
-			cmd.Flags().Int8Var(fv.Addr().Interface().(*int8), flagName, int8(fv.Int()), desc)
+			p := addr[int8](fv)
+			cmd.Flags().Int8Var(p, flagName, *p, desc)
 		case reflect.Int16:
-			cmd.Flags().Int16Var(fv.Addr().Interface().(*int16), flagName, int16(fv.Int()), desc)
+			p := addr[int16](fv)
+			cmd.Flags().Int16Var(p, flagName, *p, desc)
 		case reflect.Int32:
-			cmd.Flags().Int32Var(fv.Addr().Interface().(*int32), flagName, int32(fv.Int()), desc)
+			p := addr[int32](fv)
+			cmd.Flags().Int32Var(p, flagName, *p, desc)
 		case reflect.Int64:
-			cmd.Flags().Int64Var(fv.Addr().Interface().(*int64), flagName, fv.Int(), desc)
+			p := addr[int64](fv)
+			cmd.Flags().Int64Var(p, flagName, *p, desc)
 		case reflect.Float64:
-			cmd.Flags().Float64Var(fv.Addr().Interface().(*float64), flagName, fv.Float(), desc)
+			p := addr[float64](fv)
+			cmd.Flags().Float64Var(p, flagName, *p, desc)
 		case reflect.Bool:
-			cmd.Flags().BoolVar(fv.Addr().Interface().(*bool), flagName, fv.Bool(), desc)
+			p := addr[bool](fv)
+			cmd.Flags().BoolVar(p, flagName, *p, desc)
 		case reflect.Slice:
-			if field.Type.Elem().Kind() != reflect.String {
+			if field.Type.Elem() != reflect.TypeFor[string]() {
 				panic(fmt.Sprintf("config.RegisterFlags: field %s: flag %q only supports []string slices", field.Name, flagName))
 			}
-			var cur []string
-			if !fv.IsNil() {
-				cur = fv.Interface().([]string)
-			}
-			cmd.Flags().StringSliceVar(fv.Addr().Interface().(*[]string), flagName, cur, desc)
+			p := addr[[]string](fv)
+			cmd.Flags().StringSliceVar(p, flagName, *p, desc)
 		default:
 			panic(fmt.Sprintf("config.RegisterFlags: field %s (%s) has flag %q but unsupported reflect.Kind %s — add a case or remove the flag tag",
 				field.Name, field.Type.String(), flagName, field.Type.Kind()))
 		}
 	}
+}
+
+// addr returns a pointer to the field fv as a *T, T being the type of its
+// kind: a named type converts, as Go converts *Port to *uint16.
+func addr[T any](fv reflect.Value) *T {
+	return fv.Addr().Convert(reflect.TypeFor[*T]()).Interface().(*T)
 }

@@ -53,6 +53,10 @@ $ openadrctl bl events list --format json | jq '.events | length'
 
 `access_token`, `token_type`, `expires_in` (seconds), `scope` (as the token
 endpoint gave it), `token_url`, `expires` (when it expires, RFC 3339).
+A password in `token_url` is shown as `xxxxx`; an `expires_in` that is not
+positive is left out, and one beyond 100 years is taken as 100 years for
+`expires`. An `access_token` with anything but visible ASCII is refused
+(exit 6, `invalid_response`).
 
 ### `notifiers`
 

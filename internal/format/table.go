@@ -8,9 +8,10 @@ import (
 	"text/tabwriter"
 )
 
-// RenderTable renders headers and rows as column-aligned text using tabwriter.
+// RenderTable renders headers and rows as column-aligned text using tabwriter. Every
+// header and cell is escaped with [Cell].
 func RenderTable(m TableMarshaler) (string, error) {
-	headers := m.TableHeaders()
+	headers := cells(m.TableHeaders())
 	rows := m.TableRows()
 	if len(headers) == 0 {
 		return "", fmt.Errorf("table has no headers")
@@ -27,10 +28,19 @@ func RenderTable(m TableMarshaler) (string, error) {
 		if len(row) != len(headers) {
 			return "", fmt.Errorf("table row has %d columns, want %d", len(row), len(headers))
 		}
-		_, _ = fmt.Fprintln(tw, strings.Join(row, "\t"))
+		_, _ = fmt.Fprintln(tw, strings.Join(cells(row), "\t"))
 	}
 	if err := tw.Flush(); err != nil {
 		return "", err
 	}
 	return b.String(), nil
+}
+
+// cells returns the cells of a row escaped with [Cell].
+func cells(row []string) []string {
+	out := make([]string, len(row))
+	for i, c := range row {
+		out[i] = Cell(c)
+	}
+	return out
 }

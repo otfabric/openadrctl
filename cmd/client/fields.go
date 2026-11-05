@@ -3,6 +3,7 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/otfabric/openadrctl/internal/errs"
+	"github.com/otfabric/openadrctl/internal/oadr"
 )
 
 // bad is invalid input in a flag.
@@ -49,7 +51,7 @@ func parseValuesMaps(flag string, specs []string) ([]openadr.ValuesMap, error) {
 			return nil, bad(flag, "%q: TYPE=value[,value...]", s)
 		}
 		m := openadr.ValuesMap{Type: typ}
-		for _, v := range strings.Split(vals, ",") {
+		for v := range strings.SplitSeq(vals, ",") {
 			m.Values = append(m.Values, parseValue(strings.TrimSpace(v)))
 		}
 		out = append(out, m)
@@ -69,9 +71,13 @@ func parseTime(flag, s string) (time.Time, error) {
 	return t, nil
 }
 
-// parseDuration reads an ISO 8601 duration (PT1H) or a Go one (1h30m).
+// parseDuration reads an ISO 8601 duration (PT1H) or a Go one (1h30m). A
+// length is not negative: -PT1H is refused, as -1h is.
 func parseDuration(flag, s string) (openadr.Duration, error) {
 	if d, err := openadr.ParseDuration(s); err == nil {
+		if d.Negative {
+			return openadr.Duration{}, bad(flag, "%q: a duration must not be negative", s)
+		}
 		return d, nil
 	}
 	if d, err := time.ParseDuration(s); err == nil && d >= 0 {
@@ -120,7 +126,10 @@ func (iv *intervals) build() (*openadr.IntervalPeriod, []openadr.Interval, error
 			return nil, nil, errs.InvalidInput(errs.CodeInputFileOpenFailed, fmt.Sprintf("--csv %s: %v", iv.csv, err), err)
 		}
 		defer func() { _ = f.Close() }()
-		table, err := timeline.ReadCSV(f)
+		table, err := timeline.ReadCSV(oadr.LimitReader(f))
+		if errors.Is(err, oadr.ErrTooLarge) {
+			return nil, nil, errs.InvalidInput(errs.CodeInvalidInput, fmt.Sprintf("--csv %s: %v", iv.csv, oadr.ErrTooLarge), err)
+		}
 		if err != nil {
 			return nil, nil, errs.InvalidInput(errs.CodeInputDecodeFailed, fmt.Sprintf("--csv %s: %v", iv.csv, err), err)
 		}

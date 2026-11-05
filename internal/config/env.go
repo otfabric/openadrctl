@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"strconv"
@@ -14,7 +15,7 @@ import (
 
 // LoadFromEnv populates tagged fields from the process environment.
 // Malformed numeric or boolean values produce errors (joined when multiple vars fail).
-func LoadFromEnv(cfg interface{}) error {
+func LoadFromEnv(cfg any) error {
 	v := reflect.ValueOf(cfg)
 	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 		return nil
@@ -23,7 +24,7 @@ func LoadFromEnv(cfg interface{}) error {
 }
 
 // MustLoadFromEnv calls [LoadFromEnv] and panics if any env value is invalid (startup safety).
-func MustLoadFromEnv(cfg interface{}) {
+func MustLoadFromEnv(cfg any) {
 	if err := LoadFromEnv(cfg); err != nil {
 		panic(fmt.Sprintf("openadrctl: invalid environment: %v", err))
 	}
@@ -68,7 +69,7 @@ func loadFromEnvStruct(v reflect.Value) error {
 		if envValue == "" {
 			continue
 		}
-		if field.Type() == reflect.TypeOf(time.Duration(0)) {
+		if field.Type() == reflect.TypeFor[time.Duration]() {
 			d, err := time.ParseDuration(envValue)
 			if err != nil {
 				errs = append(errs, fmt.Errorf("%s=%q: %w", tag, envValue, err))
@@ -108,6 +109,10 @@ func loadFromEnvStruct(v reflect.Value) error {
 				errs = append(errs, fmt.Errorf("%s=%q: %w", tag, envValue, err))
 				continue
 			}
+			if math.IsNaN(val) || math.IsInf(val, 0) {
+				errs = append(errs, fmt.Errorf("%s=%q: not a finite number", tag, envValue))
+				continue
+			}
 			field.SetFloat(val)
 		case reflect.Bool:
 			val, err := strconv.ParseBool(envValue)
@@ -121,10 +126,11 @@ func loadFromEnvStruct(v reflect.Value) error {
 				continue
 			}
 			parts := strings.Split(envValue, ",")
-			for j := range parts {
-				parts[j] = strings.TrimSpace(parts[j])
+			list := reflect.MakeSlice(field.Type(), len(parts), len(parts))
+			for j, part := range parts {
+				list.Index(j).SetString(strings.TrimSpace(part))
 			}
-			field.Set(reflect.ValueOf(parts))
+			field.Set(list)
 		default:
 			// Tagged env on unsupported kind — skip (same as RegisterFlags / struct design).
 		}

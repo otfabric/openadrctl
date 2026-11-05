@@ -36,7 +36,7 @@ $ openadrctl vtn start --config seed.yaml --store vtn.db --insecure-webhooks --w
 | `--resource-groups` | off | Serve `/resourceGroups` (an extension) |
 | `--anonymous` | off | Answer requests without a token, for programs and events without targets |
 | `--notify-reads` | off | Notify subscribers of `READ` when an object is read |
-| `--rate` | `0` | Requests a second each client may make, twice as many at once; the rest are answered 429. 0: no limit |
+| `--rate` | `0` | Requests a second each client may make, twice as many at once; the rest are answered 429. 0: no limit; a finite number |
 | `--token-ttl` | `1h` | Lifetime of the tokens the VTN issues |
 | `--advertise` | | Announce the VTN on the local network with DNS-SD (`_openadr3._tcp`) under this instance name |
 | `--log-requests` | off | A `request` record per request |
@@ -62,7 +62,8 @@ Ctrl-C (or `--duration`) stops it, after the requests in progress: exit 0.
 
 `openadrctl vtn generate-config` writes the example seed (to stdout, or
 `--output seed.yaml`, which it creates with mode 0600 and does not overwrite
-without `--force`). Every section is optional.
+without `--force`; with `--force` what is there, a symbolic link too, is replaced by a new 0600 file). Every
+section is optional. A seed file is 16 MiB at most.
 
 ```yaml
 clients:

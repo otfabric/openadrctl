@@ -15,7 +15,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -239,6 +238,9 @@ type sink struct {
 	// failure ends the stream with an error of the tool.
 	failure error
 	done    chan struct{}
+	// ended is set when wait returns: a notification that arrives after
+	// it, from a handler still running, is not written.
+	ended bool
 }
 
 func newSink(out *format.StreamWriter, count int) *sink {
@@ -248,7 +250,7 @@ func newSink(out *format.StreamWriter, count int) *sink {
 func (s *sink) write(v any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.err != nil || (s.count > 0 && s.seen >= s.count) {
+	if s.ended || s.err != nil || (s.count > 0 && s.seen >= s.count) {
 		return
 	}
 	if s.err = s.out.Write(v); s.err != nil {
@@ -265,7 +267,7 @@ func (s *sink) write(v any) {
 func (s *sink) fail(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.failure == nil && s.err == nil && (s.count <= 0 || s.seen < s.count) {
+	if !s.ended && s.failure == nil && s.err == nil && (s.count <= 0 || s.seen < s.count) {
 		s.failure = err
 		close(s.done)
 	}
@@ -279,6 +281,7 @@ func (s *sink) wait(ctx context.Context) (int, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.ended = true
 	if s.err != nil {
 		return 0, errs.Output(errs.CodeOutputWriteFailed, s.err)
 	}
@@ -333,6 +336,11 @@ func (c *listenConfig) subscribe(ctx context.Context, a *api, sel *selection, oo
 	if err != nil {
 		return nil, conn.Classify(err, true)
 	}
+	if !openadr.ValidID(created.ID) {
+		// Nothing to delete it by, and nothing to print.
+		return nil, errs.New(errs.KindProtocol, errs.CodeInvalidResponse,
+			fmt.Sprintf("the VTN created the subscription with the ID %q, which is not an object ID; it may have to be deleted on the VTN", conn.Clean(created.ID)), nil)
+	}
 	_, _ = fmt.Fprintf(progress, "subscribed: subscription %s, %s of %s\n", created.ID, joinOps(oo.Operations), joinObjects(oo.Objects))
 	return func() {
 		if c.Keep {
@@ -347,7 +355,7 @@ func (c *listenConfig) subscribe(ctx context.Context, a *api, sel *selection, oo
 			_, err = a.bl.DeleteSubscription(dctx, created.ID)
 		}
 		if err != nil {
-			_, _ = fmt.Fprintf(progress, "warning: subscription %s was not deleted: %v\n", created.ID, err)
+			_, _ = fmt.Fprintf(progress, "warning: subscription %s was not deleted: %s\n", created.ID, conn.Clean(err.Error()))
 			return
 		}
 		_, _ = fmt.Fprintf(progress, "unsubscribed: subscription %s\n", created.ID)
@@ -417,7 +425,7 @@ func (c *listenConfig) runWebhook(ctx context.Context, a *api, sel *selection, s
 	}
 	scheme := "http"
 	if c.TLSCert != "" {
-		cert, err := tls.LoadX509KeyPair(c.TLSCert, c.TLSKey)
+		cert, err := oadr.LoadKeyPair(c.TLSCert, c.TLSKey)
 		if err != nil {
 			_ = l.Close()
 			return 0, errs.InvalidInput(errs.CodeInvalidCertificate, fmt.Sprintf("--tls-cert %s and --tls-key %s: %v", c.TLSCert, c.TLSKey, err), err)
@@ -434,7 +442,11 @@ func (c *listenConfig) runWebhook(ctx context.Context, a *api, sel *selection, s
 		s.write(notificationOf("webhook", "", n))
 		return nil
 	}}
-	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second, ErrorLog: log.New(io.Discard, "", 0)}
+	// A sender that opens a request and never finishes it is cut off after
+	// --timeout; the idle limit is longer than the 90 s a Go client keeps an
+	// idle connection, so that the sender closes it first.
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: min(10*time.Second, c.Timeout), ReadTimeout: c.Timeout,
+		WriteTimeout: c.Timeout, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 64 << 10, ErrorLog: log.New(io.Discard, "", 0)}
 	go func() { _ = srv.Serve(l) }()
 	defer func() { _ = srv.Close() }()
 	_, _ = fmt.Fprintf(progress, "listening: webhook on %s, callback URL %s\n", l.Addr(), callback)
@@ -456,13 +468,19 @@ func (c *listenConfig) runMQTT(ctx context.Context, a *api, s *sink, progress io
 		return 0, conn.Classify(err, false)
 	}
 	broker := mqtt.Broker{URL: c.Broker, ClientID: c.MQTTClientID, Username: c.MQTTUsername}
-	if broker.URL == "" {
+	announced := broker.URL == ""
+	if announced {
 		if n.MQTT == nil || len(n.MQTT.URIs) == 0 {
 			return 0, errs.New(errs.KindNegative, errs.CodeNotImplemented, "the VTN announces no MQTT broker in GET /notifiers; give --broker", nil)
 		}
 		broker.URL = n.MQTT.URIs[0]
+		if !brokerURL(broker.URL) {
+			return 0, errs.New(errs.KindProtocol, errs.CodeInvalidResponse,
+				fmt.Sprintf("the VTN announces the broker %q, which is not an mqtt:// or mqtts:// URL; give --broker", conn.Clean(redacted(broker.URL))), nil)
+		}
 	}
-	broker.URL = strings.Replace(strings.Replace(broker.URL, "tcp://", "mqtt://", 1), "ssl://", "mqtts://", 1)
+	broker.URL = normalBroker(broker.URL)
+	shown := conn.Clean(redacted(broker.URL))
 	if broker.ClientID == "" {
 		broker.ClientID = "openadrctl-" + randomToken()[:8]
 	}
@@ -472,9 +490,9 @@ func (c *listenConfig) runMQTT(ctx context.Context, a *api, s *sink, progress io
 	}
 	switch {
 	case c.MQTTPasswordFile != "":
-		data, err := os.ReadFile(c.MQTTPasswordFile)
+		data, err := oadr.ReadFileLimited(c.MQTTPasswordFile)
 		if err != nil {
-			return 0, errs.InvalidInput(errs.CodeInputFileOpenFailed, fmt.Sprintf("--mqtt-password-file %s: %v", c.MQTTPasswordFile, err), err)
+			return 0, oadr.InputError("--mqtt-password-file "+c.MQTTPasswordFile, err)
 		}
 		broker.Password = strings.TrimSpace(string(data))
 	case c.MQTTPassword != "":
@@ -489,6 +507,13 @@ func (c *listenConfig) runMQTT(ctx context.Context, a *api, s *sink, progress io
 			broker.Password = t
 		case a.conn.Token != "":
 			broker.Password = a.conn.Token
+		}
+		// The client's token, kept off the wire by the TLS of the VTN, is not
+		// sent in the clear to a broker the VTN named: --broker is the
+		// user's choice.
+		if broker.Password != "" && announced && strings.HasPrefix(a.conn.Base, "https://") && !strings.HasPrefix(broker.URL, "mqtts://") {
+			return 0, errs.New(errs.KindProtocol, errs.CodeInvalidResponse,
+				fmt.Sprintf("the VTN, reached over https, announces the broker %s without TLS for a login with the client's token, which is not sent in the clear; give --broker", shown), nil)
 		}
 	}
 	if broker.Username == "" && n.MQTT != nil && method == openadr.MQTTBearerToken {
@@ -516,10 +541,14 @@ func (c *listenConfig) runMQTT(ctx context.Context, a *api, s *sink, progress io
 			filters = append(filters, t.All)
 			continue
 		}
+		before := len(filters)
 		for _, f := range []string{t.Create, t.Update, t.Delete} {
 			if f != "" {
 				filters = append(filters, f)
 			}
+		}
+		if len(filters) == before {
+			return 0, errs.New(errs.KindProtocol, errs.CodeInvalidResponse, fmt.Sprintf("the VTN names no MQTT topic for %s", name), nil)
 		}
 	}
 	sub, err := mqtt.NewSubscriber(mqtt.SubscriberConfig{Broker: broker, Topics: filters,
@@ -536,10 +565,44 @@ func (c *listenConfig) runMQTT(ctx context.Context, a *api, s *sink, progress io
 		if interrupted(ctx) {
 			return errs.ExitOK, nil
 		}
-		return 0, errs.New(errs.KindTransport, errs.CodeTransportConnectFailed, fmt.Sprintf("the broker %s: not subscribed (a login the broker refuses? see --mqtt-username and --mqtt-password-file): %v", broker.URL, err), err)
+		return 0, errs.New(errs.KindTransport, errs.CodeTransportConnectFailed, fmt.Sprintf("the broker %s: not subscribed (a login the broker refuses? see --mqtt-username and --mqtt-password-file): %s", shown, conn.Clean(err.Error())), err)
 	}
-	_, _ = fmt.Fprintf(progress, "listening: %s, %s\n", broker.URL, strings.Join(filters, " "))
+	_, _ = fmt.Fprintf(progress, "listening: %s, %s\n", shown, conn.Clean(strings.Join(filters, " ")))
 	return s.wait(ctx)
+}
+
+// brokerURL tells whether s is a URL of a broker: mqtt, mqtts, or as
+// some VTNs write them tcp and ssl, with a host.
+func brokerURL(s string) bool {
+	u, err := url.Parse(s)
+	if err != nil || u.Hostname() == "" {
+		return false
+	}
+	switch u.Scheme {
+	case "mqtt", "mqtts", "tcp", "ssl":
+		return true
+	}
+	return false
+}
+
+// normalBroker writes a tcp:// or ssl:// broker URL as mqtt:// or mqtts://.
+func normalBroker(s string) string {
+	switch {
+	case strings.HasPrefix(s, "tcp://"):
+		return "mqtt://" + strings.TrimPrefix(s, "tcp://")
+	case strings.HasPrefix(s, "ssl://"):
+		return "mqtts://" + strings.TrimPrefix(s, "ssl://")
+	}
+	return s
+}
+
+// redacted is a URL with its password, if any, replaced by xxxxx.
+func redacted(s string) string {
+	u, err := url.Parse(s)
+	if err != nil || u.User == nil {
+		return s
+	}
+	return u.Redacted()
 }
 
 // mqttMethod reads the authentication method a VTN announces for its

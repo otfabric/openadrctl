@@ -58,13 +58,57 @@ func (t *Token) TableHeaders() []string { return []string{"TOKEN_URL", "TYPE", "
 func (t *Token) TableRows() [][]string {
 	exp := "-"
 	if t.ExpiresIn > 0 {
-		exp = (time.Duration(t.ExpiresIn) * time.Second).String()
+		exp = Lifetime(t.ExpiresIn).String()
 	}
 	return [][]string{{t.TokenURL, t.TokenType, exp, t.Scope}}
 }
 
 // expirySlack is how long before its expiry a token stops being used.
 const expirySlack = 10 * time.Second
+
+// maxTokenLifetime is the longest a token is taken to live, as go-openadr
+// takes it: an expires_in beyond it, which a Duration may not even hold, is
+// taken as this.
+const maxTokenLifetime = 100 * 365 * 24 * time.Hour
+
+// maxTokenResponse is the most of a token endpoint's answer that is read.
+const maxTokenResponse = 1 << 20
+
+// Lifetime is how long a token that expires in the given number of seconds
+// lives, with an expires_in no Duration holds taken as 100 years.
+func Lifetime(expiresIn float64) time.Duration {
+	if expiresIn >= maxTokenLifetime.Seconds() {
+		return maxTokenLifetime
+	}
+	return time.Duration(expiresIn * float64(time.Second)).Truncate(time.Second)
+}
+
+// validToken tells whether a token can go in an Authorization header and
+// be printed: visible ASCII only (RFC 6750 b64token is a subset).
+func validToken(t string) bool {
+	for i := 0; i < len(t); i++ {
+		if t[i] < 0x21 || t[i] > 0x7e {
+			return false
+		}
+	}
+	return t != ""
+}
+
+// client is the HTTP client of the token requests: one that follows a
+// redirect only within the origin, so that the client secret does not
+// follow a 307 elsewhere.
+func (s *TokenSource) client() *http.Client {
+	hc := s.HTTP
+	if hc == nil {
+		hc = &http.Client{Timeout: 30 * time.Second}
+	}
+	if hc.CheckRedirect == nil {
+		copied := *hc
+		copied.CheckRedirect = SameOrigin
+		hc = &copied
+	}
+	return hc
+}
 
 // Token implements client.TokenSource.
 func (s *TokenSource) Token(ctx context.Context) (string, error) {
@@ -131,12 +175,18 @@ func (s *TokenSource) fetch(ctx context.Context) (*Token, error) {
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-	resp, err := s.HTTP.Do(req)
+	resp, err := s.client().Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer drain(resp.Body)
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxTokenResponse+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxTokenResponse {
+		return nil, fmt.Errorf("%w: the token endpoint answered with more than %d bytes", openadr.ErrProtocol, maxTokenResponse)
+	}
 	var r struct {
 		Token
 		Error            string `json:"error"`
@@ -152,10 +202,16 @@ func (s *TokenSource) fetch(ctx context.Context) (*Token, error) {
 	if !strings.EqualFold(r.TokenType, "Bearer") {
 		return nil, fmt.Errorf("%w: the token endpoint issued a %q token, not a bearer token", openadr.ErrProtocol, r.TokenType)
 	}
+	if !validToken(r.AccessToken) {
+		// Neither sent in a header nor printed: it could forge either.
+		return nil, fmt.Errorf("%w: the token endpoint issued an access_token with characters a bearer token does not have", openadr.ErrProtocol)
+	}
 	t := r.Token
-	t.TokenURL = s.TokenURL
+	t.TokenURL = redacted(s.TokenURL)
 	if t.ExpiresIn > 0 {
-		t.Expires = time.Now().Add(time.Duration(t.ExpiresIn * float64(time.Second))).UTC().Truncate(time.Second)
+		t.Expires = time.Now().Add(Lifetime(t.ExpiresIn)).UTC().Truncate(time.Second)
+	} else {
+		t.ExpiresIn = 0
 	}
 	return &t, nil
 }
@@ -167,12 +223,15 @@ func (s *TokenSource) discover(ctx context.Context) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Accept", "application/json")
-	resp, err := s.HTTP.Do(req)
+	resp, err := s.client().Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer drain(resp.Body)
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxTokenResponse))
+	if err != nil {
+		return "", err
+	}
 	if resp.StatusCode != http.StatusOK {
 		apiErr := &openadr.Error{Method: http.MethodGet, Path: "/auth/server", StatusCode: resp.StatusCode}
 		var p struct{ Title, Detail, Type string }
@@ -193,9 +252,22 @@ func (s *TokenSource) discover(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("%w: GET /auth/server named %q", openadr.ErrProtocol, info.TokenURL)
 	}
 	resolved := base.ResolveReference(ref)
+	if (resolved.Scheme != "https" && resolved.Scheme != "http") || resolved.Host == "" {
+		return "", fmt.Errorf("%w: the VTN named the token endpoint %q, which is not an http or https URL", openadr.ErrProtocol, info.TokenURL)
+	}
 	// The secret goes there: not in the clear when the VTN is reached over TLS.
 	if base.Scheme == "https" && resolved.Scheme != "https" {
 		return "", fmt.Errorf("%w: the VTN named the token endpoint %q, which is not https", openadr.ErrProtocol, info.TokenURL)
 	}
 	return resolved.String(), nil
+}
+
+// redacted is a URL with the password of its user information, if any,
+// replaced by xxxxx: what may be printed of it.
+func redacted(s string) string {
+	u, err := url.Parse(s)
+	if err != nil || u.User == nil {
+		return s
+	}
+	return u.Redacted()
 }

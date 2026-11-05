@@ -7,13 +7,13 @@
 # that name their program, events watch, and what 3.0.1 does not have.
 # Prints one line per check and exits 1 when one fails.
 #
-#   scripts/interop301.sh [image]  # default: ghcr.io/otfabric/openadr-interop-openleadr301:v0.5.0
+#   scripts/interop301.sh [image]  # default: ghcr.io/otfabric/openadr-interop-openleadr301:v0.6.3
 #
 # Needs Docker, Go and curl. The VTN is published on loopback only (port 18091, or
 # OPENADR_INTEROP_PORT): the image's client secrets are public.
 set -euo pipefail
 
-IMAGE="${1:-ghcr.io/otfabric/openadr-interop-openleadr301:v0.5.0}"
+IMAGE="${1:-ghcr.io/otfabric/openadr-interop-openleadr301:v0.6.3}"
 PORT="${OPENADR_INTEROP_PORT:-18091}"
 NAME="openadrctl-interop301-$$"
 WORK="$(mktemp -d)"

@@ -65,8 +65,10 @@ func writeJSON(w io.Writer, v any) error {
 	return err
 }
 
+// writeTextWithTrailingNewline writes s escaped with [Text], so that no
+// control character but newline and tab reaches the terminal.
 func writeTextWithTrailingNewline(w io.Writer, s string) error {
-	s = strings.TrimSuffix(s, "\n")
+	s = Text(strings.TrimSuffix(s, "\n"))
 	if _, err := io.WriteString(w, s+"\n"); err != nil {
 		return err
 	}

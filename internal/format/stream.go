@@ -16,6 +16,8 @@ import (
 //   - json: one compact JSON object per line (JSON Lines);
 //   - table: a header before the first record, then one line per row. Column widths are
 //     fixed by the first record; wider cells are not truncated.
+//
+// Text is escaped with [Text], table cells with [Cell]; JSON is left to encoding/json.
 type StreamWriter struct {
 	w      io.Writer
 	f      OutputFormat
@@ -62,15 +64,16 @@ func (s *StreamWriter) Write(v any) error {
 }
 
 func (s *StreamWriter) writeTable(tm TableMarshaler) error {
-	headers := tm.TableHeaders()
-	rows := tm.TableRows()
+	headers := cells(tm.TableHeaders())
 	if len(headers) == 0 {
 		return fmt.Errorf("table has no headers")
 	}
-	for _, row := range rows {
+	var rows [][]string
+	for _, row := range tm.TableRows() {
 		if len(row) != len(headers) {
 			return fmt.Errorf("table row has %d columns, want %d", len(row), len(headers))
 		}
+		rows = append(rows, cells(row))
 	}
 
 	var b strings.Builder

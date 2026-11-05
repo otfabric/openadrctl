@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -197,9 +198,9 @@ type Valid struct {
 
 // MarshalTextOutput implements format.TextMarshaler.
 func (v *Valid) MarshalTextOutput() (string, error) {
-	s := fmt.Sprintf("%s: a valid %s", v.File, v.Kind)
+	s := fmt.Sprintf("%s: a valid %s", format.Cell(v.File), v.Kind)
 	if v.Name != "" {
-		s += " (" + v.Name + ")"
+		s += " (" + format.Cell(v.Name) + ")"
 	}
 	return s, nil
 }
@@ -242,8 +243,7 @@ A valid object exits 0. One that is not exits 3 with the property that is wrong 
 				if val, ok := v.(interface{ Validate() error }); ok {
 					if err := val.Validate(); err != nil {
 						e := errs.InvalidInput(errs.CodeInvalidObject, strings.TrimPrefix(err.Error(), "openadr: "), err)
-						var ve *openadr.ValidationError
-						if errors.As(err, &ve) {
+						if ve, ok := errors.AsType[*openadr.ValidationError](err); ok {
 							e = e.WithDetail(conn.HTTPDetail{Field: ve.Field})
 						}
 						return nil, e
@@ -264,10 +264,8 @@ A valid object exits 0. One that is not exits 3 with the property that is wrong 
 }
 
 func checkKind(k string) error {
-	for _, x := range kinds {
-		if x == k {
-			return nil
-		}
+	if slices.Contains(kinds, k) {
+		return nil
 	}
 	return errs.InvalidInput(errs.CodeInvalidInput, fmt.Sprintf("%q is not a kind of object: %s", k, strings.Join(kinds, ", ")), nil)
 }
