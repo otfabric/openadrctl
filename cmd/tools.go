@@ -198,9 +198,9 @@ type Valid struct {
 
 // MarshalTextOutput implements format.TextMarshaler.
 func (v *Valid) MarshalTextOutput() (string, error) {
-	s := fmt.Sprintf("%s: a valid %s", v.File, v.Kind)
+	s := fmt.Sprintf("%s: a valid %s", format.Cell(v.File), v.Kind)
 	if v.Name != "" {
-		s += " (" + v.Name + ")"
+		s += " (" + format.Cell(v.Name) + ")"
 	}
 	return s, nil
 }

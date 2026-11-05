@@ -40,9 +40,14 @@ type One struct {
 // MarshalJSON writes the object as OpenADR gives it.
 func (o *One) MarshalJSON() ([]byte, error) { return Encode(o.Value) }
 
-// MarshalTextOutput implements format.TextMarshaler.
+// MarshalTextOutput implements format.TextMarshaler. What the object says is
+// escaped with format.Cell: a tab or newline in a name cannot break the
+// layout, nor a control character reach the terminal.
 func (o *One) MarshalTextOutput() (string, error) {
 	row := o.Kind.Row(o.Value)
+	for i := range row {
+		row[i] = format.Cell(row[i])
+	}
 	if o.Action != "" {
 		s := fmt.Sprintf("%s %s %s", o.Action, o.Kind.Name, row[0])
 		if len(row) > 1 && row[1] != "" && row[1] != "-" {
@@ -53,13 +58,13 @@ func (o *One) MarshalTextOutput() (string, error) {
 	var b strings.Builder
 	tw := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
 	for i, h := range o.Kind.Headers {
-		if row[i] != "" {
+		if i < len(row) && row[i] != "" {
 			_, _ = fmt.Fprintf(tw, "%s:\t%s\n", strings.ToLower(h), row[i])
 		}
 	}
 	if o.Kind.Fields != nil {
 		for _, f := range o.Kind.Fields(o.Value) {
-			_, _ = fmt.Fprintf(tw, "%s:\t%s\n", f.Name, f.Value)
+			_, _ = fmt.Fprintf(tw, "%s:\t%s\n", format.Cell(f.Name), format.Cell(f.Value))
 		}
 	}
 	m := MetadataOf(o.Value)

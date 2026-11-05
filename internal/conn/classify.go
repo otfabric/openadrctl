@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	openadr "github.com/otfabric/go-openadr"
 	"github.com/otfabric/go-openadr/client"
@@ -44,6 +46,12 @@ type Problem struct {
 // Classify maps what a call to a VTN returned to a typed error of the tool.
 // write says whether the call may have changed the VTN, which turns a
 // timeout into an unknown outcome.
+//
+// The message of the error it makes is safe to print: what a VTN, a token
+// endpoint or a peer put in it (a problem's detail, an error_description)
+// has its control characters escaped (Clean), and it is cut at
+// maxMessage bytes. The openadr detail keeps what the VTN sent: JSON escapes
+// it.
 func Classify(err error, write bool) error {
 	if err == nil {
 		return nil
@@ -51,6 +59,81 @@ func Classify(err error, write bool) error {
 	if _, ok := errs.As(err); ok {
 		return err
 	}
+	out := classify(err, write)
+	if e, ok := errs.As(out); ok {
+		e.Message = Clean(e.Message)
+	}
+	return out
+}
+
+// maxMessage is the longest message Classify makes, in bytes.
+const maxMessage = 1024
+
+// Clean makes text that came from the network safe to print on one line:
+// control characters (newline and tab included), DEL, C1 controls, the
+// bidirectional overrides and line separators of Unicode, and bytes that are
+// not UTF-8 written as Go escapes, as the output of the tool writes them;
+// and cut after maxMessage bytes with "...".
+func Clean(s string) string {
+	s = escape(s)
+	if len(s) <= maxMessage {
+		return s
+	}
+	cut := maxMessage
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "..."
+}
+
+func escape(s string) string {
+	safe := true
+	for _, r := range s {
+		if unsafeRune(r) {
+			safe = false
+			break
+		}
+	}
+	if safe {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && size <= 1:
+			_, _ = fmt.Fprintf(&b, `\x%02x`, s[i])
+		case r == '\n':
+			b.WriteString(`\n`)
+		case r == '\t':
+			b.WriteString(`\t`)
+		case r == '\r':
+			b.WriteString(`\r`)
+		case unsafeRune(r) && r < 0x100:
+			_, _ = fmt.Fprintf(&b, `\x%02x`, r)
+		case unsafeRune(r):
+			_, _ = fmt.Fprintf(&b, `\u%04x`, r)
+		default:
+			b.WriteRune(r)
+		}
+		i += size
+	}
+	return b.String()
+}
+
+// unsafeRune reports a rune a terminal may act on rather than show; an
+// invalid byte decodes as utf8.RuneError.
+func unsafeRune(r rune) bool {
+	switch {
+	case r == utf8.RuneError, unicode.Is(unicode.Cc, r):
+		return true
+	case r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069, r == 0x2028, r == 0x2029:
+		return true
+	}
+	return false
+}
+
+func classify(err error, write bool) error {
 	if errors.Is(err, ErrNoToken) {
 		// The request was not sent: a timeout leaves nothing unknown.
 		write = false
@@ -96,7 +179,7 @@ func Classify(err error, write bool) error {
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
-		return Classify(fmt.Errorf("%w: %w", openadr.ErrTimeout, err), write)
+		return classify(fmt.Errorf("%w: %w", openadr.ErrTimeout, err), write)
 	}
 	return errs.New(errs.KindTransport, errs.CodeTransportConnectFailed, short(err), err)
 }

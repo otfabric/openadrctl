@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"strconv"
@@ -108,6 +109,10 @@ func loadFromEnvStruct(v reflect.Value) error {
 				errs = append(errs, fmt.Errorf("%s=%q: %w", tag, envValue, err))
 				continue
 			}
+			if math.IsNaN(val) || math.IsInf(val, 0) {
+				errs = append(errs, fmt.Errorf("%s=%q: not a finite number", tag, envValue))
+				continue
+			}
 			field.SetFloat(val)
 		case reflect.Bool:
 			val, err := strconv.ParseBool(envValue)
@@ -121,10 +126,11 @@ func loadFromEnvStruct(v reflect.Value) error {
 				continue
 			}
 			parts := strings.Split(envValue, ",")
-			for j := range parts {
-				parts[j] = strings.TrimSpace(parts[j])
+			list := reflect.MakeSlice(field.Type(), len(parts), len(parts))
+			for j, part := range parts {
+				list.Index(j).SetString(strings.TrimSpace(part))
 			}
-			field.Set(reflect.ValueOf(parts))
+			field.Set(list)
 		default:
 			// Tagged env on unsupported kind — skip (same as RegisterFlags / struct design).
 		}

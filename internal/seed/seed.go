@@ -59,10 +59,13 @@ type Seed struct {
 	ResourceGroups []openadr.ResourceGroup
 }
 
-// Load reads and checks a seed file, YAML or JSON. Every problem is
-// reported, not only the first.
+// Load reads and checks a seed file, YAML or JSON, of oadr.MaxInputSize
+// bytes at most. Every problem is reported, not only the first.
 func Load(path string) (*Seed, error) {
-	data, err := os.ReadFile(path)
+	data, err := oadr.ReadFileLimited(path)
+	if errors.Is(err, oadr.ErrTooLarge) {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -197,7 +197,7 @@ func ping(ctx context.Context, c conn.Config) (*Ping, error) {
 			}
 			detail := "from " + t.TokenURL
 			if t.ExpiresIn > 0 {
-				detail += fmt.Sprintf(", valid %s", time.Duration(t.ExpiresIn)*time.Second)
+				detail += fmt.Sprintf(", valid %s", conn.Lifetime(t.ExpiresIn))
 			}
 			return detail, nil
 		case cn.Token != "":

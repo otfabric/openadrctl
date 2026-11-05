@@ -12,7 +12,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/otfabric/go-openadr/client"
 
 	"github.com/otfabric/openadrctl/internal/errs"
+	"github.com/otfabric/openadrctl/internal/oadr"
 )
 
 // Config is the connection of a client command: the VTN, the client's
@@ -74,8 +74,8 @@ func (c Config) Validate() error {
 		return errs.InvalidInput(errs.CodeInvalidInput, "a client secret needs --client-id (or OPENADRCTL_CLIENT_ID)", nil)
 	}
 	if c.TokenURL != "" {
-		if u, err := url.Parse(c.TokenURL); err != nil || !u.IsAbs() {
-			return errs.InvalidInput(errs.CodeInvalidURL, fmt.Sprintf("--token-url %q: an absolute URL", c.TokenURL), err)
+		if u, err := url.Parse(c.TokenURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			return errs.InvalidInput(errs.CodeInvalidURL, fmt.Sprintf("--token-url %q: an http or https URL", redacted(c.TokenURL)), err)
 		}
 	}
 	if (c.Cert == "") != (c.Key == "") {
@@ -95,7 +95,7 @@ func BaseURL(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	u, err := url.Parse(s)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return "", errs.InvalidInput(errs.CodeInvalidURL, fmt.Sprintf("--url %q: an http or https URL, such as https://vtn.example/openadr3/3.1.0", s), err)
+		return "", errs.InvalidInput(errs.CodeInvalidURL, fmt.Sprintf("--url %q: an http or https URL, such as https://vtn.example/openadr3/3.1.0", redacted(s)), err)
 	}
 	if u.User != nil {
 		return "", errs.InvalidInput(errs.CodeInvalidURL, "--url must not hold credentials", nil)
@@ -130,7 +130,7 @@ func (c Config) Open() (*Conn, error) {
 		tlsCfg.RootCAs = pool
 	}
 	if c.Cert != "" {
-		cert, err := tls.LoadX509KeyPair(c.Cert, c.Key)
+		cert, err := oadr.LoadKeyPair(c.Cert, c.Key)
 		if err != nil {
 			return nil, errs.InvalidInput(errs.CodeInvalidCertificate, fmt.Sprintf("the certificate %s and key %s: %v", c.Cert, c.Key, err), err)
 		}
@@ -138,9 +138,14 @@ func (c Config) Open() (*Conn, error) {
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = tlsCfg
+	// A peer that accepts the request and never sends the head of its
+	// answer, or sends one without end, is cut off: the contexts of the
+	// commands bound the whole exchange, this bounds each response head.
+	tr.ResponseHeaderTimeout = c.Timeout
+	tr.MaxResponseHeaderBytes = maxResponseHeader
 	// No client timeout: it would end notification streams. Each command
 	// bounds its exchange with a context.
-	hc := &http.Client{Transport: tr}
+	hc := &http.Client{Transport: tr, CheckRedirect: SameOrigin}
 	out := &Conn{Base: base, HTTP: hc, TLS: tlsCfg, cfg: c}
 	switch {
 	case c.Token != "":
@@ -167,9 +172,9 @@ func (c Config) Open() (*Conn, error) {
 }
 
 func readSecret(file, flag string) (string, error) {
-	data, err := os.ReadFile(file)
+	data, err := oadr.ReadFileLimited(file)
 	if err != nil {
-		return "", errs.InvalidInput(errs.CodeInputFileOpenFailed, fmt.Sprintf("%s %s: %v", flag, file, err), err)
+		return "", oadr.InputError(flag+" "+file, err)
 	}
 	s := strings.TrimSpace(string(data))
 	if s == "" {
@@ -216,15 +221,41 @@ func (c *Conn) BL() (*client.BL, error) {
 
 // LoadPool loads the CA certificates of a PEM file.
 func LoadPool(file string) (*x509.CertPool, error) {
-	data, err := os.ReadFile(file)
+	data, err := oadr.ReadFileLimited(file)
 	if err != nil {
-		return nil, errs.InvalidInput(errs.CodeInputFileOpenFailed, fmt.Sprintf("the CA certificates %s: %v", file, err), err)
+		return nil, oadr.InputError("the CA certificates "+file, err)
 	}
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(data) {
 		return nil, errs.InvalidInput(errs.CodeInvalidCertificate, fmt.Sprintf("%s holds no PEM certificate", file), nil)
 	}
 	return pool, nil
+}
+
+// maxResponseHeader is the most a response head of a VTN or token endpoint
+// may hold.
+const maxResponseHeader = 1 << 20
+
+// maxRedirects is how many redirects a request follows, as many as the
+// default of net/http.
+const maxRedirects = 10
+
+// SameOrigin is the redirect policy of the HTTP client of a connection, the
+// one go-openadr gives a client of its own: a redirect is followed within
+// the scheme, host and port of the first request only, and otherwise
+// answered as the status it is. net/http drops the Authorization header on
+// a redirect to another host name, but not to another port or from https to
+// http, and it sends the body of a POST again on a 307 or 308 wherever it
+// leads: the client secret of a token request with it.
+func SameOrigin(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("%w: stopped after %d redirects", openadr.ErrProtocol, maxRedirects)
+	}
+	first := via[0].URL
+	if !strings.EqualFold(req.URL.Scheme, first.Scheme) || !strings.EqualFold(req.URL.Host, first.Host) {
+		return http.ErrUseLastResponse
+	}
+	return nil
 }
 
 // drain reads and closes a response body.

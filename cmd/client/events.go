@@ -169,8 +169,17 @@ by --count, --duration or an interrupt.`,
 				defer cancel()
 			}
 			s := newSink(out, c.Count)
-			go c.poll(ctx, a, query, s)
-			return s.wait(ctx)
+			// The poll ends with the command: no search outlives it.
+			pctx, stop := context.WithCancel(ctx)
+			polled := make(chan struct{})
+			go func() {
+				defer close(polled)
+				c.poll(pctx, a, query, s)
+			}()
+			code, err := s.wait(ctx)
+			stop()
+			<-polled
+			return code, err
 		})
 	}
 	runner.RegisterCommandCfg(cmd, &c)

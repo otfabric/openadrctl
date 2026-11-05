@@ -10,12 +10,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +35,7 @@ import (
 
 	"github.com/otfabric/openadrctl/internal/errs"
 	"github.com/otfabric/openadrctl/internal/format"
+	"github.com/otfabric/openadrctl/internal/oadr"
 	"github.com/otfabric/openadrctl/internal/runner"
 	"github.com/otfabric/openadrctl/internal/seed"
 )
@@ -147,6 +151,9 @@ func (c *startConfig) validate() error {
 	default:
 		return errs.InvalidInput(errs.CodeInvalidInput, fmt.Sprintf("--mqtt-client-auth %q: anonymous or token", c.MQTTClientAuth), nil)
 	}
+	if math.IsNaN(c.Rate) || math.IsInf(c.Rate, 0) {
+		return errs.InvalidInput(errs.CodeInvalidInput, fmt.Sprintf("--rate %v: a finite number of requests a second", c.Rate), nil)
+	}
 	if c.Rate < 0 || c.TokenTTL <= 0 || c.Duration < 0 {
 		return errs.InvalidInput(errs.CodeInvalidInput, "--rate and --duration must not be negative, and --token-ttl must be positive", nil)
 	}
@@ -172,9 +179,10 @@ type Record struct {
 	Message   string    `json:"message,omitempty"`
 }
 
-// MarshalTextOutput implements format.TextMarshaler.
+// MarshalTextOutput implements format.TextMarshaler. The detail is one line:
+// what clients, brokers and the seed put in it is escaped with format.Cell.
 func (r *Record) MarshalTextOutput() (string, error) {
-	return strings.TrimRight(fmt.Sprintf("%s  %-14s %s", r.Time.Format(time.RFC3339), r.Event, r.detail()), " "), nil
+	return strings.TrimRight(fmt.Sprintf("%s  %-14s %s", r.Time.Format(time.RFC3339), r.Event, format.Cell(r.detail())), " "), nil
 }
 
 func (r *Record) detail() string {
@@ -290,7 +298,7 @@ func (c *startConfig) run(ctx context.Context, out *format.StreamWriter) (int, e
 	}
 	var cert tls.Certificate
 	if c.TLSCert != "" {
-		if cert, err = tls.LoadX509KeyPair(c.TLSCert, c.TLSKey); err != nil {
+		if cert, err = oadr.LoadKeyPair(c.TLSCert, c.TLSKey); err != nil {
 			return 0, errs.InvalidInput(errs.CodeInvalidCertificate, fmt.Sprintf("--tls-cert %s and --tls-key %s: %v", c.TLSCert, c.TLSKey, err), err)
 		}
 	}
@@ -343,7 +351,7 @@ func (c *startConfig) run(ctx context.Context, out *format.StreamWriter) (int, e
 		cfg.Validator, cfg.TokenHandler, cfg.TokenURL = issuer, issuer, public+"/auth/token"
 	}
 	if c.Rate > 0 {
-		cfg.Limiter = server.NewRateLimiter(c.Rate, int(2*c.Rate)+1)
+		cfg.Limiter = server.NewRateLimiter(c.Rate, burst(c.Rate))
 	}
 	if c.WebSocket {
 		cfg.WebSocket = &server.WebSocketConfig{}
@@ -489,11 +497,8 @@ func newGenerateConfigCmd() *cobra.Command {
 				_, err := io.WriteString(cmd.OutOrStdout(), seed.Example)
 				return err
 			}
-			if _, err := os.Stat(c.Output); err == nil && !c.Force {
-				return errs.InvalidInput(errs.CodeOutputFileCreateFailed, c.Output+" exists; use --force to overwrite", nil)
-			}
-			if err := os.WriteFile(c.Output, []byte(seed.Example), 0o600); err != nil {
-				return errs.Output(errs.CodeOutputFileWriteFailed, err)
+			if err := writeSecretFile(c.Output, seed.Example, c.Force); err != nil {
+				return err
 			}
 			_, err := fmt.Fprintf(cmd.ErrOrStderr(), "wrote %s\n", c.Output)
 			return err
@@ -501,6 +506,43 @@ func newGenerateConfigCmd() *cobra.Command {
 	}
 	runner.RegisterCommandCfg(cmd, &c)
 	return cmd
+}
+
+// burst is the burst of a rate: twice the rate, and one more, as an int
+// that does not overflow for any finite rate.
+func burst(rate float64) int {
+	return int(min(2*rate, math.MaxInt32-1)) + 1
+}
+
+// writeSecretFile writes the example seed, which holds client secrets, to
+// path with mode 0600. Without force a file that exists is refused, checked
+// as the file is created (O_EXCL), not before. With force a file that exists
+// is truncated and its mode set to 0600: os.WriteFile would keep the mode it
+// had, such as 0644.
+func writeSecretFile(path, content string, force bool) error {
+	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	if force {
+		flags = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	}
+	f, err := os.OpenFile(filepath.Clean(path), flags, 0o600) // --output, the file the user named
+	if errors.Is(err, fs.ErrExist) {
+		return errs.InvalidInput(errs.CodeOutputFileCreateFailed, path+" exists; use --force to overwrite", err)
+	}
+	if err != nil {
+		return errs.Output(errs.CodeOutputFileWriteFailed, err)
+	}
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		return errs.Output(errs.CodeOutputFileWriteFailed, err)
+	}
+	if _, err := io.WriteString(f, content); err != nil {
+		_ = f.Close()
+		return errs.Output(errs.CodeOutputFileWriteFailed, err)
+	}
+	if err := f.Close(); err != nil {
+		return errs.Output(errs.CodeOutputFileWriteFailed, err)
+	}
+	return nil
 }
 
 // oneLine puts the problems of a seed on one line.
