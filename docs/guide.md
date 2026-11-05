@@ -659,7 +659,7 @@ OpenLEADR for 3.0, as the `openleadr301` image of openadr-interop serves it.
 
 ```bash
 docker run -d --rm --name openleadr301 -p 127.0.0.1:18091:8080 \
-  ghcr.io/otfabric/openadr-interop-openleadr301:v0.5.0 \
+  ghcr.io/otfabric/openadr-interop-openleadr301:v0.6.3 \
   server --fixture /fixtures/baseline-301/fixture.json --public-url http://127.0.0.1:18091
 export OPENADRCTL_URL=http://127.0.0.1:18091 OPENADRCTL_SPEC=3.0.1
 export OPENADRCTL_CLIENT_ID=interop-bl OPENADRCTL_CLIENT_SECRET=interop-bl-secret

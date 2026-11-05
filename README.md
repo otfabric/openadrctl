@@ -494,14 +494,14 @@ openadrctl is go-openadr, whose client and VTN are tested against
 [ElaadNL client](https://github.com/ElaadNL/openadr3-client) through the images
 of [openadr-interop](https://github.com/otfabric/openadr-interop) (see its
 [INTEROP.md](https://github.com/otfabric/go-openadr/blob/main/INTEROP.md)).
-openadrctl itself is run against the OpenLEADR VTN of openadr-interop v0.5.0
+openadrctl itself is run against the OpenLEADR VTN of openadr-interop v0.6.3
 by `scripts/interop.sh`: 25 checks in both roles, among them programs,
 events, reports, a VEN's token refused (403), events watch, and notifications
 by WebSocket and by MQTT on the image's broker. The [guide](docs/guide.md)
 shows part of that run.
 
 With `--spec 3.0.1`, `scripts/interop301.sh` runs it against OpenLEADR v0.1.4,
-an OpenADR 3.0.1 VTN (openadr-interop v0.5.0, `openleadr301`): 37 checks in
+an OpenADR 3.0.1 VTN (openadr-interop v0.6.3, `openleadr301`): 37 checks in
 both roles, among them typed targets in objects and searches, resources
 through their VEN, a report that names its program, `validate --spec 3.0.1`
 of what `get` wrote, and the operations 3.0.1 does not have, refused before

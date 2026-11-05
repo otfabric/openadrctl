@@ -4,6 +4,69 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.5.0
+
+**Date:** 2026-11-05
+**Previous release:** v0.4.2
+
+### Summary
+
+Hardening after a SAST review: openadrctl no longer trusts what a VTN, a token endpoint, a broker, a webhook sender or an input file sends it. Built on go-openadr v0.6.0. A few failures now exit with a different code; they are listed below.
+
+### Exit codes
+
+| Case | Old | New | JSON error code |
+|---|---|---|---|
+| `--token-url` that is not http or https | 4 | 3 | `invalid_url` |
+| `listen --via mqtt`: the VTN announces a broker that is not an MQTT URL, or no topics for a set | 3 | 6 | `invalid_response` |
+| A token with characters a bearer token does not have | 0 or 4 | 6 | `invalid_response` |
+| More than 10 redirects | 4 | 6 | `invalid_response` |
+| A token endpoint or `GET /auth/server` that redirects to another origin | followed | 6 | `token_refused` or `http_error`, with the 3xx status |
+
+These cases are new, all exit 6 `invalid_response`:
+- a discovered token URL that is not http or https;
+- a subscription created without a usable ID;
+- a plain `mqtt://` broker announced by an https VTN when the client logs in with a token.
+
+These cases are new, all exit 3:
+- input over 16 MiB: an object file or stdin, `--csv`, a token, secret or password file, or a CA bundle (`invalid_input`);
+- a seed over 16 MiB (`invalid_config`);
+- a certificate or key over 16 MiB (`invalid_certificate`);
+- `vtn start --rate` NaN or Inf;
+- negative ISO 8601 durations for `--interval` and `--duration`;
+- NaN or Inf in a float environment variable.
+
+See [docs/exitcodes.md](docs/exitcodes.md).
+
+### Fixed
+
+- **Credentials:**
+  - A token request no longer follows a redirect to another origin, so the client secret is not sent there.
+  - Passwords in URLs are shown as `xxxxx` in output, errors and progress lines.
+  - `listen --via mqtt` no longer sends the client's token over plain MQTT for an https VTN. `--broker` still overrides this.
+- **Hostile tokens and answers:**
+  - A bearer token with control characters or spaces is refused; it is no longer printed or put in a header.
+  - A huge `expires_in` is capped at 100 years, and a negative one is dropped.
+  - A token answer is read up to 1 MiB.
+  - Response heads are limited to `--timeout` and 1 MiB.
+- **Terminal output:** control characters, bidirectional overrides and invalid UTF-8 from a VTN, a file or a notification are printed as escapes in text and table output and in `error:` lines. Error messages are cut at 1024 bytes. JSON output keeps the original text.
+- **`listen` and `events watch`:**
+  - The `listen --via webhook` server has read, write and idle timeouts and a 64 KiB header limit, so a sender that never finishes cannot hold a connection open.
+  - No records are written after a stream ends.
+  - `events watch` stops its poll when it ends.
+- **Files:**
+  - Every file the user names, and stdin, is read up to 16 MiB. A device or FIFO without end is refused rather than read without limit.
+  - `vtn generate-config --output --force` now writes the file with mode 0600, as it already did without `--force`. The seed holds client secrets.
+
+### Changed
+
+- Go 1.26 code (`go fix`).
+- CI workflows otfabric/.github v3.3.1.
+- Interop scripts default to openadr-interop v0.6.3.
+- New fuzz targets: flag values, environment loading and output escaping.
+
+---
+
 ## v0.4.2
 
 **Date:** 2026-10-31
