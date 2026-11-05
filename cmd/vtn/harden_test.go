@@ -86,6 +86,31 @@ func TestWriteSecretFile(t *testing.T) {
 			t.Error("the symlink target was created")
 		}
 	}
+	// With --force a symbolic link is replaced, not written through.
+	target := filepath.Join(dir, "target")
+	link2 := filepath.Join(dir, "link2.yaml")
+	if err := os.WriteFile(target, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link2); err == nil {
+		if err := writeSecretFile(link2, "x", true); err != nil {
+			t.Fatal(err)
+		}
+		if data, _ := os.ReadFile(target); string(data) != "keep" {
+			t.Errorf("--force wrote through the link: %q", data)
+		}
+		if fi, err := os.Lstat(link2); err != nil || !fi.Mode().IsRegular() {
+			t.Errorf("--force left %v, %v", fi, err)
+		}
+	}
+	// What cannot be removed is not overwritten.
+	full := filepath.Join(dir, "full")
+	if err := os.MkdirAll(filepath.Join(full, "child"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if e, ok := errs.As(writeSecretFile(full, "x", true)); !ok || e.Code != errs.CodeOutputFileWriteFailed {
+		t.Errorf("a directory that is not empty: %v", e)
+	}
 	err = writeSecretFile(filepath.Join(dir, "no", "such", "dir.yaml"), "x", true)
 	if e, ok := errs.As(err); !ok || e.Code != errs.CodeOutputFileWriteFailed {
 		t.Fatalf("missing directory: %v", err)
@@ -127,5 +152,30 @@ func TestRecordTextEscapes(t *testing.T) {
 	c := Record{Event: "client", Client: "evil\x1b]0;x\a", Role: "bl"}
 	if s, _ := c.MarshalTextOutput(); strings.ContainsAny(s, "\x1b\a") {
 		t.Errorf("client %q", s)
+	}
+}
+
+// failing fails its write or its close.
+type failing struct{ write, close error }
+
+func (f failing) Write(p []byte) (int, error) {
+	if f.write != nil {
+		return 0, f.write
+	}
+	return len(p), nil
+}
+
+func (f failing) Close() error { return f.close }
+
+func TestWriteAndClose(t *testing.T) {
+	boom := errors.New("boom")
+	for name, f := range map[string]failing{"write": {write: boom}, "close": {close: boom}, "both": {write: boom, close: errors.New("other")}} {
+		err := writeAndClose(f, "x")
+		if e, ok := errs.As(err); !ok || e.Code != errs.CodeOutputFileWriteFailed || !errors.Is(err, boom) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if err := writeAndClose(failing{}, "x"); err != nil {
+		t.Errorf("no failure: %v", err)
 	}
 }

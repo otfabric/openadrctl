@@ -515,31 +515,36 @@ func burst(rate float64) int {
 }
 
 // writeSecretFile writes the example seed, which holds client secrets, to
-// path with mode 0600. Without force a file that exists is refused, checked
-// as the file is created (O_EXCL), not before. With force a file that exists
-// is truncated and its mode set to 0600: os.WriteFile would keep the mode it
-// had, such as 0644.
+// path as a new file of mode 0600. Without force a file that exists is
+// refused, checked as the file is created (O_EXCL), not before. With force
+// what is there is removed first and the file created anew: rewriting it
+// would keep the mode it had, such as 0644, and write through a symbolic
+// link to wherever it leads.
 func writeSecretFile(path, content string, force bool) error {
-	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	path = filepath.Clean(path) // --output, the file the user named
 	if force {
-		flags = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return errs.Output(errs.CodeOutputFileWriteFailed, err)
+		}
 	}
-	f, err := os.OpenFile(filepath.Clean(path), flags, 0o600) // --output, the file the user named
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, fs.ErrExist) {
 		return errs.InvalidInput(errs.CodeOutputFileCreateFailed, path+" exists; use --force to overwrite", err)
 	}
 	if err != nil {
 		return errs.Output(errs.CodeOutputFileWriteFailed, err)
 	}
-	if err := f.Chmod(0o600); err != nil {
-		_ = f.Close()
-		return errs.Output(errs.CodeOutputFileWriteFailed, err)
+	return writeAndClose(f, content)
+}
+
+// writeAndClose writes content to f and closes it; a failure of either is
+// output_file_write_failed.
+func writeAndClose(f io.WriteCloser, content string) error {
+	_, err := io.WriteString(f, content)
+	if cerr := f.Close(); err == nil {
+		err = cerr
 	}
-	if _, err := io.WriteString(f, content); err != nil {
-		_ = f.Close()
-		return errs.Output(errs.CodeOutputFileWriteFailed, err)
-	}
-	if err := f.Close(); err != nil {
+	if err != nil {
 		return errs.Output(errs.CodeOutputFileWriteFailed, err)
 	}
 	return nil

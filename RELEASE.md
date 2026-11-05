@@ -56,7 +56,7 @@ See [docs/exitcodes.md](docs/exitcodes.md).
   - `events watch` stops its poll when it ends.
 - **Files:**
   - Every file the user names, and stdin, is read up to 16 MiB. A device or FIFO without end is refused rather than read without limit.
-  - `vtn generate-config --output --force` now writes the file with mode 0600, as it already did without `--force`. The seed holds client secrets.
+  - `vtn generate-config --output --force` now replaces the file with a new one of mode 0600, as it already did without `--force`; it no longer writes through a symbolic link at that path. The seed holds client secrets.
 
 ### Changed
 

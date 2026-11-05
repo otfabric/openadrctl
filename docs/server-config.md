@@ -62,7 +62,7 @@ Ctrl-C (or `--duration`) stops it, after the requests in progress: exit 0.
 
 `openadrctl vtn generate-config` writes the example seed (to stdout, or
 `--output seed.yaml`, which it creates with mode 0600 and does not overwrite
-without `--force`; with `--force` the file is 0600 afterwards too). Every
+without `--force`; with `--force` what is there, a symbolic link too, is replaced by a new 0600 file). Every
 section is optional. A seed file is 16 MiB at most.
 
 ```yaml

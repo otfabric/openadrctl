@@ -278,3 +278,32 @@ func TestHostileSubscription(t *testing.T) {
 		t.Errorf("subscription ID: %+v", e)
 	}
 }
+
+// A subscription the VTN will not delete is reported as a warning, with
+// what the VTN said escaped.
+func TestHostileSubscriptionNotDeleted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/notifiers":
+			_, _ = w.Write([]byte(`{"WEBHOOK":true,"WEBSOCKET":true}`))
+		case r.URL.Path == "/subscriptions" && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"sub-1","clientName":"openadrctl","objectOperations":[{"objects":["EVENT"],"operations":["CREATE"],"mechanism":"WEBSOCKET"}]}`))
+		case r.URL.Path == "/subscriptions/sub-1" && r.Method == http.MethodDelete:
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"title":"Internal Server Error","status":500,"detail":"\u001b[2Jgone"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	r := run(t, "ven", "listen", "--via", "websocket", "--url", srv.URL, "--timeout", "1s", "--format", "json")
+	if r.code == 0 || !strings.Contains(r.stderr, "warning: subscription sub-1 was not deleted") {
+		t.Fatalf("exit %d, stderr:\n%s", r.code, r.stderr)
+	}
+	if strings.Contains(r.stderr, "\x1b") || !strings.Contains(r.stderr, `\x1b[2Jgone`) {
+		t.Errorf("the VTN's detail is not escaped:\n%q", r.stderr)
+	}
+}

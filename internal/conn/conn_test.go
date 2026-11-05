@@ -5,6 +5,7 @@ package conn
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	openadr "github.com/otfabric/go-openadr"
 	"github.com/otfabric/go-openadr/client"
@@ -451,8 +453,27 @@ func TestClean(t *testing.T) {
 			t.Errorf("Clean(%q) = %q, want %q", in, got, want)
 		}
 	}
+	// Cut on a rune, never inside one.
+	odd := "a" + strings.Repeat("é", maxMessage)
+	if got := Clean(odd); !strings.HasSuffix(got, "...") || !utf8.ValidString(got) || len(got) > maxMessage+3 {
+		t.Errorf("odd: %d bytes, valid %v", len(got), utf8.ValidString(got))
+	}
 	long := strings.Repeat("é", maxMessage)
 	if got := Clean(long); len(got) > maxMessage+3 || !strings.HasSuffix(got, "...") || strings.ContainsRune(got, 0xfffd) {
 		t.Errorf("long: %d bytes", len(got))
+	}
+}
+
+// An answer to GET /auth/server cut off before its end fails Fetch, and a
+// TokenSource without an HTTP client uses one of its own.
+func TestDiscoverCutOff(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		_, _ = w.Write([]byte(`{"tokenURL":`))
+	}))
+	defer srv.Close()
+	src := &TokenSource{Base: srv.URL, ClientID: "c", ClientSecret: "s"}
+	if _, err := src.Fetch(context.Background()); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Errorf("Fetch: %v, want an unexpected EOF", err)
 	}
 }

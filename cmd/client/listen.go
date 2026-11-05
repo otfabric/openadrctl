@@ -412,7 +412,7 @@ func (c *listenConfig) runWebSocket(ctx context.Context, a *api, sel *selection,
 		} else {
 			_ = st.Close()
 		}
-		return 0, errs.New(errs.KindTransport, errs.CodeConnectionLost, "the WebSocket of the VTN did not open: "+conn.Clean(err.Error()), err)
+		return 0, errs.New(errs.KindTransport, errs.CodeConnectionLost, "the WebSocket of the VTN did not open: "+err.Error(), err)
 	}
 	_, _ = fmt.Fprintln(progress, "listening: WebSocket open")
 	return s.wait(ctx)
