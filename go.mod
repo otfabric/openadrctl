@@ -1,6 +1,6 @@
 module github.com/otfabric/openadrctl
 
-go 1.26.8
+go 1.26.0
 
 require (
 	github.com/mochi-mqtt/server/v2 v2.7.9
