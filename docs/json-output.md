@@ -90,6 +90,16 @@ DNS-SD TXT record as advertised.
 when there is one number or string, and JSON otherwise (`[1,2]`,
 `{"x":1,"y":2}`). `events create --csv` reads this form.
 
+### `version`
+
+`version --json`, or `version` with `OPENADRCTL_FORMAT=json`: one line, the keys always present and in this order:
+
+```json
+{"name":"openadrctl","version":"0.6.0","tag":"v0.6.0","commit":"1802d0f9afe8642d1e278120b76fcdfac967cb9e","built":"2026-11-07T10:00:00Z","libraries":[{"name":"go-openadr","version":"0.6.0"}],"go":"go1.26.10","platform":"linux/amd64"}
+```
+
+`version` has no leading `v` and is `dev` for a development build; `tag` is `""` on a build without a tag; `commit` is the full SHA (`-dirty` for a modified tree) or `unknown`; `built` is RFC 3339 UTC or `unknown`; `libraries` are the OT Fabric libraries (`github.com/otfabric/go-*`) the binary is built with.
+
 ## Streams (JSON Lines)
 
 Streams write one JSON object per line, as each record happens.

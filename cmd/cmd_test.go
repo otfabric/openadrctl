@@ -9,17 +9,46 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/otfabric/openadrctl/internal/buildinfo"
 )
 
 func TestVersionAndCompletion(t *testing.T) {
-	SetBuildMeta("v9.9.9", "v9.9.9", "abc1234", "2030-01-01T00:00:00Z")
-	r := must(t, 0, "version")
-	for _, want := range []string{"openadrctl version: v9.9.9", "commit:      abc1234", "openadr:     3.1.0, and 3.0.1 as a client (go-openadr"} {
-		if !strings.Contains(r.stdout, want) {
-			t.Errorf("version lacks %q:\n%s", want, r.stdout)
-		}
+	t.Cleanup(func() { SetBuildMeta("", "", "", "") })
+	SetBuildMeta("v9.9.9", "v9.9.9", "1802d0f9afe8642d1e278120b76fcdfac967cb9e", "2030-01-01T00:00:00Z")
+	var libs string
+	for _, l := range buildinfo.Get("openadrctl").Libraries {
+		libs += l.Name + " " + l.Version + ", "
+	}
+	if !strings.Contains(libs, "go-openadr ") {
+		t.Errorf("the libraries %q do not name go-openadr", libs)
+	}
+	text := "openadrctl 9.9.9 (tag v9.9.9, commit 1802d0f9afe8642d1e278120b76fcdfac967cb9e, built 2030-01-01T00:00:00Z, " +
+		libs + runtime.Version() + ", " + runtime.GOOS + "/" + runtime.GOARCH + ")\n"
+	if r := must(t, 0, "version"); r.stdout != text {
+		t.Errorf("version = %q, want %q", r.stdout, text)
+	}
+	libsJSON, _ := json.Marshal(buildinfo.Get("openadrctl").Libraries)
+	js := `{"name":"openadrctl","version":"9.9.9","tag":"v9.9.9","commit":"1802d0f9afe8642d1e278120b76fcdfac967cb9e","built":"2030-01-01T00:00:00Z",` +
+		`"libraries":` + string(libsJSON) + `,"go":"` + runtime.Version() + `","platform":"` + runtime.GOOS + "/" + runtime.GOARCH + `"}` + "\n"
+	if r := must(t, 0, "version", "--json"); r.stdout != js {
+		t.Errorf("version --json = %q, want %q", r.stdout, js)
+	}
+	t.Setenv("OPENADRCTL_FORMAT", "json")
+	if r := must(t, 0, "version"); r.stdout != js {
+		t.Errorf("OPENADRCTL_FORMAT=json version = %q, want %q", r.stdout, js)
+	}
+	t.Setenv("OPENADRCTL_FORMAT", "table")
+	if r := must(t, 0, "version"); r.stdout != text {
+		t.Errorf("OPENADRCTL_FORMAT=table version = %q, want the text line", r.stdout)
+	}
+	t.Setenv("OPENADRCTL_FORMAT", "")
+	SetBuildMeta("", "", "", "")
+	if r := must(t, 0, "version"); !strings.HasPrefix(r.stdout, "openadrctl dev (commit ") {
+		t.Errorf("a development build printed %q", r.stdout)
 	}
 	for _, sh := range []string{"bash", "zsh", "fish", "powershell"} {
 		if r := must(t, 0, "completion", sh); !strings.Contains(r.stdout, "openadrctl") {

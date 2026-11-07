@@ -1429,7 +1429,9 @@ Print the version of openadrctl.
 openadrctl version [flags]
 ```
 
-No flags of its own.
+| Flag | Type | Default | Meaning |
+|------|------|---------|---------|
+| `--json` | bool | false | Print the build information as one JSON object |
 
 ### openadrctl vtn
 

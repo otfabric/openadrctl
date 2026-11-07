@@ -36,6 +36,8 @@ From source (Go 1.26.8+): `go install github.com/otfabric/openadrctl@latest`
 
 ### Shell completion
 
+Completion knows the commands and flags, the values of enum flags such as `--format`, `--spec`, `--via`, `--object`, `--operation` and `--mqtt-client-auth`, the topic sets of `topics`, the kinds of `validate`, and PEM, JSON and YAML files for `--cert`, `--key`, `--ca`, `--file`, `--config` and the file arguments.
+
 ```bash
 # bash (needs the bash-completion package)
 mkdir -p ~/.local/share/bash-completion/completions
@@ -275,7 +277,7 @@ Every command with all its flags: **[docs/commands.md](docs/commands.md)**.
 | `discover` | Find VTNs on the local network with DNS-SD |
 | `validate <kind> <file>` | Check an object against the schema, offline |
 | `timeline <event-file>` | Lay out the intervals of an event, offline |
-| `completion`, `version` | Shell completion; the version, with go-openadr's |
+| `completion`, `version` | Shell completion; the version on one line, with go-openadr's (`--json`: one object) |
 
 ## Environment variables
 
