@@ -37,12 +37,22 @@ From source (Go 1.26.8+): `go install github.com/otfabric/openadrctl@latest`
 ### Shell completion
 
 ```bash
-openadrctl completion bash > /etc/bash_completion.d/openadrctl    # bash
-openadrctl completion zsh > "${fpath[1]}/_openadrctl"             # zsh
-openadrctl completion fish > ~/.config/fish/completions/openadrctl.fish
+# bash (needs the bash-completion package)
+mkdir -p ~/.local/share/bash-completion/completions
+openadrctl completion bash > ~/.local/share/bash-completion/completions/openadrctl
+
+# zsh: a directory on your fpath, then restart the shell
+mkdir -p ~/.zsh/completions && openadrctl completion zsh > ~/.zsh/completions/_openadrctl
+# and once in ~/.zshrc:  fpath=(~/.zsh/completions $fpath); autoload -U compinit && compinit
+
+# fish
+mkdir -p ~/.config/fish/completions && openadrctl completion fish > ~/.config/fish/completions/openadrctl.fish
 ```
 
-PowerShell: `openadrctl completion powershell | Out-String | Invoke-Expression`.
+```powershell
+# PowerShell: add this line to your profile ($PROFILE)
+openadrctl completion powershell | Out-String | Invoke-Expression
+```
 
 ## Why openadrctl?
 
