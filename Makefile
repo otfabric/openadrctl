@@ -28,7 +28,7 @@ COVERAGE_MIN ?= 85
 COVER_PKG_MIN := 80
 FUZZTIME ?= 30s
 # docsync release of docs-check (DOC-008).
-DOCSYNC_VERSION := v0.2.0
+DOCSYNC_VERSION := v0.3.0
 
 .PHONY: help
 help: ## Show this help.

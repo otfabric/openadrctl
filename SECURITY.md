@@ -1,5 +1,12 @@
 # Security Policy
 
+## Supported Versions
+
+| Version | Supported |
+|---------|-----------|
+| v0.5.x (latest release) | Yes |
+| Older releases | No |
+
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability, please report it responsibly by
