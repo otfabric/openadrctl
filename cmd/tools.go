@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,21 +22,6 @@ import (
 	"github.com/otfabric/openadrctl/internal/oadr"
 	"github.com/otfabric/openadrctl/internal/runner"
 )
-
-// goOpenADRVersion is the version of go-openadr this binary was built with.
-func goOpenADRVersion() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, d := range info.Deps {
-			if d.Path == "github.com/otfabric/go-openadr" {
-				if d.Replace != nil {
-					return d.Replace.Version + " (replaced)"
-				}
-				return d.Version
-			}
-		}
-	}
-	return "unknown"
-}
 
 func newTokenCmd() *cobra.Command {
 	c := newConnConfig()
@@ -225,8 +209,16 @@ A valid object exits 0. One that is not exits 3 with the property that is wrong 
 --format json in openadr.field). Nothing is sent anywhere.`,
 		Example: `  openadrctl validate event event.json
   openadrctl bl events get 4e5f6a7b --format json | openadrctl validate event -`,
-		Args:      cobra.ExactArgs(2),
-		ValidArgs: kinds,
+		Args: cobra.ExactArgs(2),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			switch len(args) {
+			case 0:
+				return kinds, cobra.ShellCompDirectiveNoFileComp
+			case 1:
+				return jsonFileArg(cmd, args, toComplete)
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runner.RunFormattedChecked(cmd, c.Format, func() error {
 				v := openadr.Version(strings.TrimSpace(c.Spec))
@@ -306,7 +298,8 @@ func newTimelineCmd() *cobra.Command {
 		Example: `  openadrctl timeline event.json
   openadrctl timeline event.json --csv > intervals.csv
   openadrctl bl events get 4e5f6a7b --format json | openadrctl timeline - --at 2030-01-01T12:00:00Z`,
-		Args: cobra.ExactArgs(1),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: jsonFileArg,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runner.RunFormattedChecked(cmd, c.Format, func() error { return nil }, func(context.Context) (any, error) {
 				e, err := oadr.ReadFile[openadr.Event](args[0], cmd.InOrStdin())

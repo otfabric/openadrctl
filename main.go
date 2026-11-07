@@ -8,12 +8,13 @@ import (
 	"github.com/otfabric/openadrctl/cmd"
 )
 
-// Build-time variables injected via ldflags.
+// Build-time variables injected via ldflags; empty means a development build
+// (see internal/buildinfo).
 var (
-	version   = "dev"
-	tag       = "none"
-	commit    = "unknown"
-	buildDate = "unknown"
+	version   = ""
+	tag       = ""
+	commit    = ""
+	buildDate = ""
 )
 
 // exit ends the process; a test replaces it.

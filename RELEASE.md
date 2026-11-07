@@ -4,6 +4,23 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.6.0
+
+**Date:** 2026-11-07
+**Previous release:** v0.5.2
+
+### Added
+
+- `version --json` (also `OPENADRCTL_FORMAT=json`): the build information as one JSON object, keys `name`, `version`, `tag`, `commit`, `built`, `libraries`, `go`, `platform`, always present and in this order.
+- Shell completion completes the value of every flag that takes one: `--spec` (3.1.0, 3.0.1), `--via`, `--mqtt-client-auth`, `--object`, `--operation`, `--at` and `--start` (`now`), the URL schemes of `--url`, `--token-url`, `--public-url`, `--callback-url`, `--broker` and `--mqtt`, `--child` (`resource:`, `group:`), PEM files for `--ca`, `--cert`, `--key`, `--mqtt-ca`, `--tls-cert` and `--tls-key`; the topic sets of `topics`, JSON files for the file arguments of `validate` and `timeline`; numbers, durations, IDs and names no longer complete file names.
+
+### Changed
+
+- **Breaking for scripts that read `version`:** `version` prints one line, `openadrctl 0.6.0 (tag v0.6.0, commit <sha>, built <date>, go-openadr 0.6.0, go1.26.10, linux/amd64)`, instead of a block of `version:`, `tag:`, `commit:`, `build date:`, `openadr:`, `go version:` and `platform:` lines. The OpenADR revisions are no longer listed there (they are in the README); go-openadr's version is. The version has no leading `v`. A development build reports `dev` and the commit from the Go VCS stamp (`-dirty` for a modified tree); `go install …@vX.Y.Z` reports that version.
+- `make build` stamps a version and tag only when HEAD is a tag (a build off a tag reports `dev`), and the full commit SHA.
+
+---
+
 ## v0.5.2
 
 **Date:** 2026-11-07

@@ -132,6 +132,20 @@ func topicSetNames() string {
 	return strings.Join(names, ", ")
 }
 
+// topicSetCompletions are the names of the topic sets, those that take an ID
+// with the colon after them.
+func topicSetCompletions() []string {
+	var out []string
+	for k, v := range topicSets {
+		if v.withID {
+			k += ":"
+		}
+		out = append(out, k+"\t"+v.help)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // parseTopicSet reads programs, ven-events:<id>, ... .
 func parseTopicSet(s string) (client.TopicSet, error) {
 	name, id, _ := strings.Cut(s, ":")
@@ -195,6 +209,12 @@ Business Logic gets the topics of every set; a VEN those of its own VEN object
 (ven:<id>, ven-events:<id>, ven-programs:<id>, ven-resources:<id>).`,
 		Example: "  openadrctl bl topics events\n  openadrctl ven topics ven-events:1f2e3d4c --format json",
 		Args:    cobra.ExactArgs(1),
+		ValidArgsFunction: func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+			if len(args) > 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return topicSetCompletions(), cobra.ShellCompDirectiveNoFileComp | cobra.ShellCompDirectiveNoSpace
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var set client.TopicSet
 			return once(cmd, role, &c, func() error {

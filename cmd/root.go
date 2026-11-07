@@ -9,31 +9,23 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
 
-	openadr "github.com/otfabric/go-openadr"
-
 	"github.com/otfabric/openadrctl/cmd/client"
 	"github.com/otfabric/openadrctl/cmd/vtn"
+	"github.com/otfabric/openadrctl/internal/buildinfo"
+	"github.com/otfabric/openadrctl/internal/config"
 	"github.com/otfabric/openadrctl/internal/errs"
+	"github.com/otfabric/openadrctl/internal/format"
 	"github.com/otfabric/openadrctl/internal/runner"
 )
 
-// buildMeta holds link-time metadata set from main via SetBuildMeta.
-var buildMeta struct {
-	version, tag, commit, buildDate string
-}
-
 // SetBuildMeta is called from main before Execute; values come from ldflags -X main.*.
 func SetBuildMeta(version, tag, commit, buildDate string) {
-	buildMeta.version = version
-	buildMeta.tag = tag
-	buildMeta.commit = commit
-	buildMeta.buildDate = buildDate
+	buildinfo.Set(version, tag, commit, buildDate)
 }
 
 // NewRootCmd builds the command tree. Every call returns a fresh tree, with the flags of
@@ -74,49 +66,38 @@ stderr. Exit codes are stable: see docs/exitcodes.md.`,
 	}
 	root.SetHelpCommandGroupID("tools")
 	root.SetCompletionCommandGroupID("tools")
+	registerDefaultCompletions(root)
 	return root
 }
 
 func newVersionCmd() *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print the version of openadrctl",
-		Args:  cobra.NoArgs,
-		Run: func(cmd *cobra.Command, _ []string) {
-			out := cmd.OutOrStdout()
-			ver := strings.TrimSpace(buildMeta.version)
-			if ver == "" {
-				ver = "(unknown)"
+		Long: `Print the version, tag, commit, build date, Go version and platform of openadrctl on one
+line, or as one JSON object with --json or OPENADRCTL_FORMAT=json.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			info := buildinfo.Get("openadrctl")
+			line := info.String()
+			if f, err := format.Parse(config.Getenv("OPENADRCTL_FORMAT")); asJSON || (err == nil && f == format.FormatJSON) {
+				line = info.JSON()
 			}
-			_, _ = fmt.Fprintf(out, "openadrctl version: %s\n", ver)
-			if s := strings.TrimSpace(buildMeta.tag); s != "" {
-				_, _ = fmt.Fprintf(out, "tag:         %s\n", s)
-			}
-			if s := strings.TrimSpace(buildMeta.commit); s != "" {
-				_, _ = fmt.Fprintf(out, "commit:      %s\n", s)
-			}
-			if s := strings.TrimSpace(buildMeta.buildDate); s != "" {
-				_, _ = fmt.Fprintf(out, "build date:  %s\n", s)
-			}
-			_, _ = fmt.Fprintf(out, "openadr:     %s, and %s as a client (go-openadr %s)\n", openadr.Version310, openadr.Version301, goOpenADRVersion())
-			_, _ = fmt.Fprintf(out, "go version:  %s\n", runtime.Version())
-			_, _ = fmt.Fprintf(out, "platform:    %s/%s\n", runtime.GOOS, runtime.GOARCH)
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), line)
+			return err
 		},
 	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Print the build information as one JSON object")
+	return cmd
 }
 
 func newCompletionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "completion [bash|zsh|fish|powershell]",
 		Short: "Generate shell completion scripts",
-		Long: `Generate shell completion scripts for openadrctl.
-
-To load completions:
-
-  bash:       source <(openadrctl completion bash)
-  zsh:        openadrctl completion zsh > "${fpath[1]}/_openadrctl"
-  fish:       openadrctl completion fish | source
-  powershell: openadrctl completion powershell | Out-String | Invoke-Expression`,
+		Long: `Generate a shell completion script for openadrctl: bash, zsh, fish or PowerShell.
+Installation: see "Shell completion" in the README.`,
 		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
 		RunE: func(cmd *cobra.Command, args []string) error {
