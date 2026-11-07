@@ -4,6 +4,21 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.5.2
+
+**Date:** 2026-11-07
+**Previous release:** v0.5.1
+
+### Fixed
+
+- The help of the event commands said "a event" (`Create a event`, `Read a event`, `Delete a event`, `Change a event`); it now says "an event".
+
+### Documentation
+
+- `docs/commands.md`: a reference of every command and its flags (docsync).
+
+---
+
 ## v0.5.1
 
 **Date:** 2026-11-05

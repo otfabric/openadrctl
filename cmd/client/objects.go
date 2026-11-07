@@ -166,7 +166,7 @@ func (n noun[T, Q]) getCmd(role Role) *cobra.Command {
 	c := newCommon()
 	cmd := &cobra.Command{
 		Use:     "get <id>",
-		Short:   fmt.Sprintf("Read a %s by its ID", n.kind.Name),
+		Short:   fmt.Sprintf("Read %s by its ID", withArticle(n.kind.Name)),
 		Example: n.examples["get"],
 		Args:    cobra.ExactArgs(1),
 	}
@@ -194,10 +194,10 @@ type writeConfig struct {
 func (n noun[T, Q]) writeCmd(role Role, create bool) *cobra.Command {
 	c := writeConfig{Common: newCommon()}
 	verb, use, args := "update", "update <id>", cobra.ExactArgs(1)
-	short := fmt.Sprintf("Change a %s: read it, apply --file and the flags, send it back", n.kind.Name)
+	short := fmt.Sprintf("Change %s: read it, apply --file and the flags, send it back", withArticle(n.kind.Name))
 	if create {
 		verb, use, args = "create", "create", cobra.NoArgs
-		short = fmt.Sprintf("Create a %s from flags or a JSON file", n.kind.Name)
+		short = fmt.Sprintf("Create %s from flags or a JSON file", withArticle(n.kind.Name))
 	}
 	long := short + `.
 
@@ -307,8 +307,8 @@ func (n noun[T, Q]) deleteCmd(role Role) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "delete <id>",
 		Aliases: []string{"rm"},
-		Short:   fmt.Sprintf("Delete a %s", n.kind.Name),
-		Long:    fmt.Sprintf("Delete a %s. The VTN answers with the object as it last was, which is printed.", n.kind.Name),
+		Short:   fmt.Sprintf("Delete %s", withArticle(n.kind.Name)),
+		Long:    fmt.Sprintf("Delete %s. The VTN answers with the object as it last was, which is printed.", withArticle(n.kind.Name)),
 		Example: n.examples["delete"],
 		Args:    cobra.ExactArgs(1),
 	}
@@ -371,4 +371,14 @@ func setMetadata[T oadr.Object](v *T, m openadr.Metadata) {
 	case *openadr.ResourceGroup:
 		p.Metadata = m
 	}
+}
+
+// withArticle puts "a" or "an" before an object kind's name for help texts:
+// "an event", "a VEN", "a program". The kind names that start with a vowel
+// letter also start with a vowel sound.
+func withArticle(name string) string {
+	if name != "" && strings.ContainsRune("aeiou", rune(name[0])) {
+		return "an " + name
+	}
+	return "a " + name
 }

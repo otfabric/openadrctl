@@ -51,7 +51,7 @@ Subcommands: `create`, `delete`, `get`, `list`, `timeline`, `update`, `watch`.
 
 ### openadrctl bl events create
 
-Create a event from flags or a JSON file.
+Create an event from flags or a JSON file.
 
 ```text
 openadrctl bl events create [flags]
@@ -78,7 +78,7 @@ Plus the [connection flags](#connection-flags).
 
 ### openadrctl bl events delete
 
-Delete a event.
+Delete an event.
 
 ```text
 openadrctl bl events delete <id> [flags]
@@ -94,7 +94,7 @@ Plus the [connection flags](#connection-flags).
 
 ### openadrctl bl events get
 
-Read a event by its ID.
+Read an event by its ID.
 
 ```text
 openadrctl bl events get <id> [flags]
@@ -141,7 +141,7 @@ Plus the [connection flags](#connection-flags).
 
 ### openadrctl bl events update
 
-Change a event: read it, apply --file and the flags, send it back.
+Change an event: read it, apply --file and the flags, send it back.
 
 ```text
 openadrctl bl events update <id> [flags]
@@ -843,7 +843,7 @@ Subcommands: `get`, `list`, `timeline`, `watch`.
 
 ### openadrctl ven events get
 
-Read a event by its ID.
+Read an event by its ID.
 
 ```text
 openadrctl ven events get <id> [flags]
