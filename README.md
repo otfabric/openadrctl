@@ -17,7 +17,8 @@ with no runtime dependencies.
 
 **Docs:** [guide](docs/guide.md) (common scenarios, with real output) ·
 [exit codes](docs/exitcodes.md) · [JSON output](docs/json-output.md) ·
-[VTN and seed file](docs/server-config.md) · [RELEASE.md](RELEASE.md)
+[VTN and seed file](docs/server-config.md) ·
+[command reference](docs/commands.md) (every command and flag) · [RELEASE.md](RELEASE.md)
 
 ## Why openadrctl?
 
@@ -323,6 +324,8 @@ v0.1.4, scripting with JSON, and troubleshooting.
 
 ## Commands
 
+Every command with all its flags: **[docs/commands.md](docs/commands.md)**.
+
 | Command | Does |
 |---------|------|
 | `ven programs list`, `get` | The programs the VEN may see (`--target`, `--name`) |
@@ -555,7 +558,7 @@ openadrctl/
 │   ├── runner/           running a command, and rendering a fatal error
 │   └── config/           flags and environment variables from struct tags
 ├── scripts/interop.sh    openadrctl against the OpenLEADR VTN of openadr-interop
-└── docs/                 guide, exit codes, JSON output, VTN and seed file
+└── docs/                 guide, commands, exit codes, JSON output, VTN and seed file
 ```
 
 ## Development

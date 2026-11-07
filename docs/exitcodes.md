@@ -14,6 +14,7 @@ modbusctl, …).
 | 5 | `timeout` | No answer in `--timeout` |
 | 6 | `refused` | The VTN answered with an HTTP error (4xx or 5xx), or its token endpoint refused the client; the `openadr` object has the status and the VTN's problem object |
 | 6 | `protocol` | The VTN broke the protocol: an answer that does not decode as OpenADR 3.1.0, a token endpoint that issues no bearer token |
+| 7 | | Partial success: some of the work was done. No command of openadrctl returns it today; it keeps this meaning |
 | 10 | `output`, `internal` | The result could not be written, or openadrctl failed |
 | 130 | `interrupted` | Ctrl-C or SIGTERM before a one-shot command has its result |
 
@@ -133,6 +134,6 @@ Events need `--yes` to be created or changed, and every object needs it to
 be deleted: exit 2 with `confirmation_required` otherwise. `--dry-run` shows
 the object a create or update would send, and sends nothing.
 
-**Organisation table:** these codes follow the OT Fabric CLI exit-code table. openadrctl does not use `1`, `7`, `8` and `9`: they keep their organisation meaning and are not reused for anything else.
+**Organisation table:** these codes follow the OT Fabric CLI exit-code table. openadrctl does not use `1`, `8` and `9`, and no command returns `7` today: they keep their organisation meaning and are not reused for anything else.
 
 **Format variable:** `OPENADRCTL_FORMAT` is the name to use; `OPENADRCTL_OUTPUT_FORMAT` stays accepted. When both are set, `OPENADRCTL_FORMAT` wins.
