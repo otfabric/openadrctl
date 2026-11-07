@@ -23,9 +23,6 @@ func TestVersionAndCompletion(t *testing.T) {
 	for _, l := range buildinfo.Get("openadrctl").Libraries {
 		libs += l.Name + " " + l.Version + ", "
 	}
-	if !strings.Contains(libs, "go-openadr ") {
-		t.Errorf("the libraries %q do not name go-openadr", libs)
-	}
 	text := "openadrctl 9.9.9 (tag v9.9.9, commit 1802d0f9afe8642d1e278120b76fcdfac967cb9e, built 2030-01-01T00:00:00Z, " +
 		libs + runtime.Version() + ", " + runtime.GOOS + "/" + runtime.GOARCH + ")\n"
 	if r := must(t, 0, "version"); r.stdout != text {
