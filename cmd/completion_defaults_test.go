@@ -109,3 +109,18 @@ func TestEveryValueFlagCompletes(t *testing.T) {
 	}
 	walk(NewRootCmd())
 }
+
+// TestCompleteNothingAfterLastArg: a command whose positional arguments are all
+// given offers nothing more, and no file names either.
+func TestCompleteNothingAfterLastArg(t *testing.T) {
+	noFile := fmt.Sprintf(":%d", cobra.ShellCompDirectiveNoFileComp)
+	for _, args := range [][]string{
+		{"bl", "topics", "programs", ""},
+		{"ven", "topics", "ven-events:1f2e3d4c", ""},
+		{"validate", "event", "event.json", ""},
+	} {
+		if got, d := complete(t, args...); len(got) != 0 || d != noFile {
+			t.Errorf("__complete %v = %v %s, want nothing and %s", args, got, d, noFile)
+		}
+	}
+}
