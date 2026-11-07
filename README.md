@@ -20,6 +20,30 @@ with no runtime dependencies.
 [VTN and seed file](docs/server-config.md) ·
 [command reference](docs/commands.md) (every command and flag) · [RELEASE.md](RELEASE.md)
 
+## Install
+
+```bash
+curl -fsSL https://get.otfabric.io/openadrctl | sh
+```
+
+```powershell
+irm https://get.otfabric.io/openadrctl.ps1 | iex
+```
+
+Linux (amd64, arm64, armv7), macOS (Intel, Apple silicon) and Windows (amd64, arm64). The installer verifies the release's SHA-256 checksum, installs per user without `sudo` (`~/.local/bin`, Windows `%LOCALAPPDATA%\OTFabric\bin`), and upgrades in place when run again. Pin a version with `OTF_VERSION=x.y.z`; for CI, containers and device images use `OTF_UNMANAGED_INSTALL=<dir>`; all options: [otfabric/install](https://github.com/otfabric/install#options). For offline machines, the archives and checksums are on [Releases](https://github.com/otfabric/openadrctl/releases).
+
+From source (Go 1.26.8+): `go install github.com/otfabric/openadrctl@latest`
+
+### Shell completion
+
+```bash
+openadrctl completion bash > /etc/bash_completion.d/openadrctl    # bash
+openadrctl completion zsh > "${fpath[1]}/_openadrctl"             # zsh
+openadrctl completion fish > ~/.config/fish/completions/openadrctl.fish
+```
+
+PowerShell: `openadrctl completion powershell | Out-String | Invoke-Expression`.
+
 ## Why openadrctl?
 
 - **Talk to a VTN as a VEN** from a shell: read the programs and events meant
@@ -128,8 +152,8 @@ production server.
 
 ## Table of Contents
 
+- [Install](#install)
 - [Features](#features)
-- [Installation](#installation)
 - [OpenADR 3 in two minutes](#openadr-3-in-two-minutes)
 - [Usage](#usage)
 - [Commands](#commands)
@@ -155,113 +179,6 @@ production server.
 | **VTN** (`vtn start`) | The OpenADR 3.1.0 API from a seed file, an OAuth2 token endpoint with `bl` and `ven` clients, webhooks, MQTT (to your broker, with clients logging in by token if you like: `--mqtt-client-auth token` and `POST /auth/mqtt` for the broker), WebSockets, resource groups, anonymous reads, rate limits, a store kept in a file, DNS-SD advertisement, https, one record per request and notification |
 | **Tools** | `ping` (connect, TLS, token, API, notifiers), `token`, `discover` (DNS-SD), `validate` (objects against the schema, misspelt properties included), `timeline` (an event file, offline) |
 | **Connection** | Client credentials with token discovery (`GET /auth/server`) or a bearer token, custom CAs, mutual TLS, retries with backoff for what another attempt can cure, a timeout per command |
-
-## Installation
-
-Download a pre-built binary from the [GitHub Releases page](https://github.com/otfabric/openadrctl/releases). No Go toolchain is required.
-
-| Platform | CPU | Download |
-|---|---|---|
-| Linux | x86-64 | `openadrctl-<version>-linux-amd64.tar.gz` |
-| Linux | 64-bit ARM | `openadrctl-<version>-linux-arm64.tar.gz` |
-| Linux | 32-bit ARM | `openadrctl-<version>-linux-armv7.tar.gz` |
-| macOS | Apple Silicon | `openadrctl-<version>-darwin-arm64.tar.gz` |
-| macOS | Intel | `openadrctl-<version>-darwin-amd64.tar.gz` |
-| Windows | x86-64 | `openadrctl-<version>-windows-amd64.zip` |
-| Windows | ARM64 | `openadrctl-<version>-windows-arm64.zip` |
-
-Each release has `openadrctl-<version>-checksums.txt` (SHA-256).
-
-### Linux
-
-```bash
-VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/openadrctl/releases/latest | sed 's|.*/v||')
-case "$(uname -m)" in
-  x86_64)         ARCH=amd64 ;;
-  aarch64|arm64)  ARCH=arm64 ;;
-  armv7l)         ARCH=armv7 ;;
-esac
-FILE="openadrctl-${VERSION}-linux-${ARCH}.tar.gz"
-BASE="https://github.com/otfabric/openadrctl/releases/download/v${VERSION}"
-curl -fsSLO "${BASE}/${FILE}" && curl -fsSLO "${BASE}/openadrctl-${VERSION}-checksums.txt"
-grep "${FILE}" "openadrctl-${VERSION}-checksums.txt" | sha256sum -c -
-mkdir -p openadrctl-dl && tar -xzf "${FILE}" -C openadrctl-dl
-sudo install -m 0755 "$(find openadrctl-dl -type f -name 'openadrctl*' | head -n1)" /usr/local/bin/openadrctl
-```
-
-### macOS
-
-```bash
-VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/openadrctl/releases/latest | sed 's|.*/v||')
-case "$(uname -m)" in arm64) ARCH=arm64 ;; x86_64) ARCH=amd64 ;; esac
-FILE="openadrctl-${VERSION}-darwin-${ARCH}.tar.gz"
-BASE="https://github.com/otfabric/openadrctl/releases/download/v${VERSION}"
-curl -fsSLO "${BASE}/${FILE}" && curl -fsSLO "${BASE}/openadrctl-${VERSION}-checksums.txt"
-grep "${FILE}" "openadrctl-${VERSION}-checksums.txt" | shasum -a 256 -c -
-mkdir -p openadrctl-dl && tar -xzf "${FILE}" -C openadrctl-dl
-sudo install -m 0755 "$(find openadrctl-dl -type f -name 'openadrctl*' | head -n1)" /usr/local/bin/openadrctl
-```
-
-### Windows (PowerShell)
-
-```powershell
-$version = (Invoke-RestMethod https://api.github.com/repos/otfabric/openadrctl/releases/latest).tag_name.TrimStart('v')
-$arch    = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
-$file = "openadrctl-$version-windows-$arch.zip"
-$base = "https://github.com/otfabric/openadrctl/releases/download/v$version"
-Invoke-WebRequest "$base/$file" -OutFile "$env:TEMP\$file"
-Invoke-WebRequest "$base/openadrctl-$version-checksums.txt" -OutFile "$env:TEMP\openadrctl-checksums.txt"
-$expected = ((Select-String -Path "$env:TEMP\openadrctl-checksums.txt" -Pattern $file).Line -split '\s+')[0]
-if ($expected -ne (Get-FileHash "$env:TEMP\$file" -Algorithm SHA256).Hash) { throw "Checksum mismatch for $file" }
-$dir = "$env:LOCALAPPDATA\Programs\openadrctl"
-New-Item -ItemType Directory -Force -Path $dir | Out-Null
-Expand-Archive "$env:TEMP\$file" -DestinationPath "$env:TEMP\openadrctl-dl" -Force
-$exe = Get-ChildItem "$env:TEMP\openadrctl-dl" -Recurse -Filter 'openadrctl*.exe' | Select-Object -First 1
-Copy-Item $exe.FullName "$dir\openadrctl.exe" -Force
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-if ($userPath -notlike "*$dir*") { [Environment]::SetEnvironmentVariable('Path', "$userPath;$dir", 'User') }
-```
-
-Open a new terminal for the `Path` change to apply. If Windows SmartScreen
-warns about an unrecognised app, choose **More info → Run anyway**.
-
-### Manual download
-
-1. Open the [latest release](https://github.com/otfabric/openadrctl/releases/latest).
-2. Download the archive for your platform from the table above.
-3. Extract it, rename the binary to `openadrctl` (`openadrctl.exe` on
-   Windows) and move it to a folder on your `PATH`.
-
-### Update and uninstall
-
-Run the same commands again to update: they fetch the latest release and
-overwrite the previous binary. To uninstall, delete the binary
-(`sudo rm /usr/local/bin/openadrctl`, or the folder
-`%LOCALAPPDATA%\Programs\openadrctl` on Windows). openadrctl writes no
-configuration of its own; `vtn start --store` writes only the file you name.
-
-### Build from source
-
-Go 1.26.8 or later:
-
-```bash
-go install github.com/otfabric/openadrctl@latest
-```
-
-or `git clone`, then `make build` (runs the checks and writes
-`bin/openadrctl`).
-
-Check that it works: `openadrctl version`.
-
-### Shell completion
-
-```bash
-openadrctl completion bash > /etc/bash_completion.d/openadrctl    # bash
-openadrctl completion zsh > "${fpath[1]}/_openadrctl"             # zsh
-openadrctl completion fish > ~/.config/fish/completions/openadrctl.fish
-```
-
-PowerShell: `openadrctl completion powershell | Out-String | Invoke-Expression`.
 
 ## OpenADR 3 in two minutes
 
