@@ -1,0 +1,9 @@
+{
+  "clis": [
+    {
+      "name": "openadrctl",
+      "manifest": "./cmd",
+      "exit_codes": "internal/errs"
+    }
+  ]
+}
