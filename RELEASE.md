@@ -4,6 +4,19 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.7.0
+
+**Date:** 2026-11-08
+**Previous release:** v0.6.1
+
+### Changed
+
+- Built on go-openadr v0.7.0, whose VTN and token issuer were checked against recorded exchanges with OpenLEADR, cB-Sigma and ElaadNL.
+- `vtn`: a request body declared as anything other than JSON (for example `text/plain` or a form) is refused with 415; it used to be read as JSON. A body without a Content-Type is still read as JSON.
+- `vtn`: every 401 from the token endpoint carries `WWW-Authenticate: Basic realm="openadr"`, also when the client sent its credentials in the form.
+
+---
+
 ## v0.6.1
 
 **Date:** 2026-11-08
