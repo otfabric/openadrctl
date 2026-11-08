@@ -1,6 +1,6 @@
 # openadrctl — OpenADR 3 Command-Line Tool: Act as a VEN or as Business Logic, Serve a Test VTN, Listen for Notifications
 
-[![Go Version](https://img.shields.io/badge/Go-1.26.8%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI Status](https://github.com/otfabric/openadrctl/actions/workflows/ci.yml/badge.svg)](https://github.com/otfabric/openadrctl/actions/workflows/ci.yml)
 [![Code Coverage](https://codecov.io/gh/otfabric/openadrctl/graph/badge.svg)](https://codecov.io/gh/otfabric/openadrctl)
@@ -32,7 +32,7 @@ irm https://get.otfabric.io/openadrctl.ps1 | iex
 
 Linux (amd64, arm64, armv7), macOS (Intel, Apple silicon) and Windows (amd64, arm64). The installer verifies the release's SHA-256 checksum, installs per user without `sudo` (`~/.local/bin`, Windows `%LOCALAPPDATA%\OTFabric\bin`), and upgrades in place when run again. Pin a version with `OTF_VERSION=x.y.z`; for CI, containers and device images use `OTF_UNMANAGED_INSTALL=<dir>`; all options: [otfabric/install](https://github.com/otfabric/install#options). For offline machines, the archives and checksums are on [Releases](https://github.com/otfabric/openadrctl/releases).
 
-From source (Go 1.26.8+): `go install github.com/otfabric/openadrctl@latest`
+From source (Go 1.26+): `go install github.com/otfabric/openadrctl@latest`
 
 ### Shell completion
 

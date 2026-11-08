@@ -4,6 +4,18 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.6.1
+
+**Date:** 2026-11-08
+**Previous release:** v0.6.0
+
+### Changed
+
+- Release binaries are built with the latest Go 1.26 patch release; v0.6.0 was built with go1.26.8.
+- Requires Go 1.26.0 or later (was 1.26.8), the organisation floor; nothing needed the higher one.
+
+---
+
 ## v0.6.0
 
 **Date:** 2026-11-07
