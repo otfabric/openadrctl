@@ -4,6 +4,17 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.7.1
+
+**Date:** 2026-11-12
+**Previous release:** v0.7.0
+
+### Changed
+
+- Built on go-openadr v0.7.1 (was v0.7.0), whose interop suite pins openadr-interop v0.8.1; the library does not change. `openadrctl` code is unchanged.
+
+---
+
 ## v0.7.0
 
 **Date:** 2026-11-08
