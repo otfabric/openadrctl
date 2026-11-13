@@ -4,6 +4,18 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.7.2
+
+**Date:** 2026-11-13
+**Previous release:** v0.7.1
+
+### Changed
+
+- Built on go-openadr v0.7.2 (was v0.7.1), whose interop suite pins openadr-interop v0.8.2 and the latest MQTT brokers; the library does not change. `openadrctl` code is unchanged.
+- `scripts/interop.sh` and `scripts/interop301.sh` default to openadr-interop v0.8.2 (were v0.6.3). Both pass against it: 25 checks against OpenLEADR v0.2.8, and 37 with `--spec 3.0.1` against OpenLEADR v0.1.4.
+
+---
+
 ## v0.7.1
 
 **Date:** 2026-11-12
