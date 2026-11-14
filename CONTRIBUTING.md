@@ -44,3 +44,14 @@ happened, never for a fixed time.
   ([docs/exitcodes.md](docs/exitcodes.md), [docs/json-output.md](docs/json-output.md)):
   a change to them is called out in [RELEASE.md](RELEASE.md).
 - Documentation shows real output: run the command, and paste what it printed.
+
+## When CI runs
+
+| Event | Workflow | What runs |
+|---|---|---|
+| Pull request | `pr.yml` | `docs.yml` (docsync, otfabric-policy) always; `ci.yml` unless every changed file is documentation; then `OT Fabric Required Checks` |
+| Push to a branch | none | nothing; dispatch `ci.yml` to test a branch without a pull request |
+| Push to `main` | `docs.yml` | the light checks; the merged commit was tested as the pull request's merge commit |
+| Release | `release.yml` | the release workflow tests the release commit again |
+
+Documentation means an added or modified `*.md` file outside `.github/`, `testdata/` and `vendor/`, other than `AGENTS.md` and `CLAUDE.md`. A deleted or renamed document, or any other file, runs everything. `OT Fabric Required Checks` fails unless every job that applies succeeded; its summary lists them.
