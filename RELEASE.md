@@ -4,6 +4,21 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.7.3
+
+**Date:** 2026-11-14
+**Previous release:** v0.7.2
+
+No command or flag is added or changed.
+
+### Changed
+
+- Built on go-openadr v0.7.3 (was v0.7.2) (go-openadr RELEASE.md, v0.7.3). For the tool this means:
+  - A program, event or report whose duration has no ISO 8601 form (seconds that are not a finite number, or a negative component) is refused when it is validated, before it is sent.
+  - The commands that subscribe to notifications, over MQTT or a WebSocket, and those that send webhooks end cleanly when they are stopped from several places at once, and application code the library calls that does not return normally is logged with its stack while the command goes on.
+
+---
+
 ## v0.7.2
 
 **Date:** 2026-11-13
