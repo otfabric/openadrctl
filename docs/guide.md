@@ -492,15 +492,39 @@ $ OPENADRCTL_CLIENT_ID=site-42 OPENADRCTL_CLIENT_SECRET=site-42-secret \
     openadrctl ven listen --via mqtt --topics ven-events:site-42 --count 1
 listening: mqtt://127.0.0.1:11883, vens/site-42/events/+
 2026-10-29T00:28:10Z  mqtt      EVENT        CREATE c1f7474e7b3b63ba50688b425792a095 (for-site-42)
+```
 
+The VTN writes a `mqtt_login` record per check: `site-42 allowed`,
+`utility denied`. A login the broker refuses ends `listen` at once with exit
+4; here with a broker that answers `not authorized`:
+
+```console
 $ OPENADRCTL_MQTT_PASSWORD=guess openadrctl bl listen --via mqtt --topics events --timeout 5s
-error: the broker mqtt://127.0.0.1:11883: not subscribed (a login the broker refuses? see --mqtt-username and --mqtt-password-file): context deadline exceeded
+warning: mqtt: cannot connect to the broker: mqtt: the broker refused the connection: not authorized
+error: the broker mqtt://127.0.0.1:11883 refused the login: not subscribed (see --mqtt-username and --mqtt-password-file): mqtt: the broker refused the connection: not authorized
 $ echo $?
 4
 ```
 
-The VTN writes a `mqtt_login` record per check: `site-42 allowed`,
-`utility denied`.
+A WebSocket or broker connection that is lost is a `warning:` on stderr, and
+is made again; `listening: … again` says when notifications arrive again.
+What the VTN sent meanwhile is missed. Here the broker restarted:
+
+```console
+$ openadrctl bl listen --via mqtt --topics events --count 1
+listening: mqtt://127.0.0.1:11883, events/+
+warning: mqtt: connection to the broker lost: mqtt: malformed packet: unexpected packet type 14 from the broker
+warning: mqtt: cannot connect to the broker: dial tcp 127.0.0.1:11883: connect: connection refused
+listening: mqtt://127.0.0.1:11883 again, events/+
+2026-11-15T16:46:55Z  mqtt      EVENT        CREATE 1a48597e2a085ba4837727a926e852fe (after-restart)
+```
+
+With the client's token as the password, the login after a reconnect uses a
+new token once the one it had is near its expiry (`reconnecting: … with a
+new token`), or when the broker refuses it (`reconnecting: … refused the
+token, logging in with a new one`). When the broker refuses the login after a
+reconnect, also with a new token, `listen` ends with exit 4 instead of
+waiting without a connection.
 
 ## 9. Polling: events watch
 

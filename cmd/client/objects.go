@@ -104,18 +104,23 @@ func (n noun[T, Q]) remove(a *api, ctx context.Context, parent, id string) (T, e
 
 type listConfig struct {
 	Common
-	Skip  int `flag:"skip" desc:"Skip this many objects (one page only)"`
-	Limit int `flag:"limit" desc:"Ask for at most this many objects, 50 at most (one page only); default: all, page by page"`
+	Skip       int `flag:"skip" desc:"Skip this many objects (one page only)"`
+	Limit      int `flag:"limit" desc:"Ask for at most this many objects, 50 at most (one page only); default: all, page by page"`
+	MaxObjects int `flag:"max-objects" desc:"Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most)"`
 }
 
 func (n noun[T, Q]) listCmd(role Role) *cobra.Command {
-	c := listConfig{Common: newCommon()}
+	c := listConfig{Common: newCommon(), MaxObjects: defaultMaxObjects}
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   fmt.Sprintf("Search the %s", n.kind.Plural),
 		Long: fmt.Sprintf(`Search the %s the VTN shows this client. Without --skip or --limit every page is
-fetched, 50 objects at a time; with either, one page.`, n.kind.Plural),
+fetched, 50 objects at a time; with either, one page.
+
+A search keeps at most --max-objects objects (100000 unless it is given; 0 for up to
+1000000), and at most 1 GiB of them as JSON; one past that ends the command with exit 6
+(invalid_response).`, n.kind.Plural),
 		Example: n.examples["list"],
 		Args:    cobra.NoArgs,
 	}
@@ -125,18 +130,25 @@ fetched, 50 objects at a time; with either, one page.`, n.kind.Plural),
 			if c.Skip < 0 || c.Limit < 0 || c.Limit > 50 {
 				return errs.InvalidInput(errs.CodeInvalidInput, "--skip must not be negative, and --limit is 0 to 50", nil)
 			}
-			return nil
+			return checkMaxObjects(c.MaxObjects)
 		}, false, func(ctx context.Context, a *api) (any, error) {
 			var items []T
+			kept := newBudget(c.MaxObjects)
 			if cmd.Flags().Changed("skip") || cmd.Flags().Changed("limit") {
-				var err error
 				q := query(client.Page{Skip: c.Skip, Limit: c.Limit})
 				if err := retargetQuery(c.Version(), &q); err != nil {
 					return nil, err
 				}
-				if items, err = n.list(a, ctx, q); err != nil {
+				page, err := n.list(a, ctx, q)
+				if err != nil {
 					return nil, err
 				}
+				for _, v := range page {
+					if err := kept.take(v); err != nil {
+						return nil, err
+					}
+				}
+				items = page
 			} else {
 				for v, err := range client.Each(ctx, func(ctx context.Context, p client.Page) ([]T, error) {
 					q := query(p)
@@ -146,6 +158,9 @@ fetched, 50 objects at a time; with either, one page.`, n.kind.Plural),
 					return n.list(a, ctx, q)
 				}) {
 					if err != nil {
+						return nil, err
+					}
+					if err := kept.take(v); err != nil {
 						return nil, err
 					}
 					items = append(items, v)

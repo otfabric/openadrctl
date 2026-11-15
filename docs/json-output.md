@@ -102,7 +102,11 @@ when there is one number or string, and JSON otherwise (`[1,2]`,
 
 ## Streams (JSON Lines)
 
-Streams write one JSON object per line, as each record happens.
+Streams write one JSON object per line, as each record happens. Their text
+records (the default `--format text`) are one line each too: what the VTN or
+the broker sent in them is escaped as in error messages (`\n`, `\t`, `\x1b`,
+…), as it is in the text of `notifiers`, `topics` and `ping`. JSON keeps the
+values as they were sent.
 
 ### `listen`
 
@@ -115,8 +119,9 @@ Streams write one JSON object per line, as each record happens.
 | `id`, `name` | Of the object |
 | `object` | The object, as OpenADR has it |
 
-The `subscribed:`, `listening:` and `unsubscribed:` lines go to stderr, and
-are not records.
+The `subscribed:`, `listening:`, `reconnecting:`, `warning:` and
+`unsubscribed:` lines go to stderr, and are not records. After a lost
+connection, `listening: … again` says that notifications arrive again.
 
 ### `events watch`
 
@@ -136,8 +141,8 @@ Every record has `time` and `event`:
 | `request` | `op` (`GET /programs`), `status`, `ms` (with `--log-requests`) |
 | `notification` | `mechanism` (`webhook`, `mqtt`, `websocket`), `objectType`, `operation` |
 | `socket_opened`, `socket_closed` | A WebSocket of a client; `message`: why it closed |
-| `log` | `level`, `message`: a warning or error of the VTN |
-| `mqtt_login` | `client` (the user name), `status` (200 allowed, 403 denied): a broker asked `POST /auth/mqtt` (`--mqtt-client-auth token`) |
+| `log` | `level`, `message`: a warning or error of the VTN. Among them, at `warn`: the requests to `POST /auth/mqtt` without the broker's secret (`OPENADRCTL_VTN_MQTT_AUTH_SECRET`), one record a minute at most with their number; and, when stopping, requests still in progress after 5 seconds, whose connections are closed |
+| `mqtt_login` | `client` (the user name), `status` (200 allowed, 403 denied): a broker asked `POST /auth/mqtt` (`--mqtt-client-auth token`). A request without the broker's secret, when one is set, is answered 401 and is no `mqtt_login` record |
 | `stopped` | The end |
 
 ```console

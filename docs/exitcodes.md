@@ -59,7 +59,8 @@ A redirect is followed only within the scheme, host and port of the request:
 a redirect elsewhere is the answer, so a token endpoint that redirects to
 another origin is `token_refused` with its 3xx status, and an API call
 `http_error`. Neither the client secret nor the token follows it.
-`--debug` adds the causes of the error, one `cause:` line each.
+`--debug` adds the causes of the error on stderr, one `cause:` line each,
+escaped as the message is and cut after 1024 bytes.
 
 | Field | Meaning |
 |-------|---------|
@@ -79,19 +80,19 @@ another origin is `token_refused` with its 3xx status, and an API call
 |------|-------|
 | `usage` | `invalid_input` (what the command-line parser rejects), `confirmation_required` (`events create`, `events update` and every `delete` without `--yes`) |
 | `invalid_input` | `invalid_input` (also a file or stdin of more than 16 MiB: an object, a `--csv`; a `--value` or `--attribute` value written as a decimal too large for a number, such as `1e400`), `invalid_format` (`--format`), `invalid_url` (`--url`, `--token-url` that is not an http or https URL, `--public-url`, `--callback-url`, `--broker`, `--mqtt`), `invalid_flag_combination` (`--value` and `--csv`, `--tls-cert` without `--tls-key`, `--callback-url` and `--websocket`, …), `invalid_config` (a seed that does not load or validate, or is larger than 16 MiB, a seed without clients and without `--anonymous`, a `--store` that does not open), `invalid_object` (an object that breaks the OpenADR schema: `validate`, and every create and update before it sends), `not_in_revision` (an operation the revision of `--spec` does not have: notifiers, MQTT topics and resource groups with `--spec 3.0.1`; nothing is sent), `invalid_certificate` (a certificate, key or CA file that does not load; `vtn start` also refuses a `--tls-cert` or `--tls-key` larger than 16 MiB), `input_file_open_failed`, `input_decode_failed` (a file that is not JSON, a property OpenADR 3.1.0 does not have, a CSV that does not parse), `output_file_create_failed` (`vtn generate-config --output` of a file that exists, without `--force`) |
-| `transport` | `transport_connect_failed` (no TCP connection, a broker that never accepted the subscription), `transport_tls_failed` (a certificate either end refused), `connection_lost` (a WebSocket that did not open), `listen_failed` (`vtn start --listen`, `listen --listen`) |
+| `transport` | `transport_connect_failed` (no TCP connection, a broker that never accepted the subscription, a broker that refused the login of `listen --via mqtt`, also after a reconnect), `transport_tls_failed` (a certificate either end refused), `connection_lost` (a WebSocket that did not open), `listen_failed` (`vtn start --listen`, `listen --listen`) |
 | `timeout` | `request_timeout` (no answer to a request that changes nothing, or one that was never sent because no token could be had), `outcome_unknown` (no answer to a request that may have changed the VTN: it was **not** sent again, also with `--retries`; check before you resend) |
 | `refused` | `bad_request` (400), `unauthorized` (401), `forbidden` (403), `not_found` (404), `conflict` (409), `too_many_requests` (429), `not_implemented` (501, or no MQTT broker announced), `unavailable` (503), `server_error` (other 5xx), `http_error` (any other status), `token_refused` (the token endpoint refused the credentials) |
-| `protocol` | `invalid_response` (an answer that does not decode; a token endpoint that issues no bearer token, or one with characters a bearer token does not have; a token endpoint `GET /auth/server` names that is not an http or https URL, or not https for a VTN reached over https; more than 10 redirects; for `listen`, a subscription created without a valid ID, a broker announced in `GET /notifiers` that is not an `mqtt://` or `mqtts://` URL, a set of topics the VTN names no topic for, and a broker without TLS announced for a login with the client's token by a VTN reached over https) |
+| `protocol` | `invalid_response` (an answer that does not decode; a token endpoint that issues no bearer token, or one with characters a bearer token does not have; a token endpoint `GET /auth/server` names that is not an http or https URL, or not https for a VTN reached over https; more than 10 redirects; a search that returns more than `--max-objects` objects, or more than the 1000000 objects or 1 GiB of them as JSON that a search keeps; for `listen`, a subscription created without a valid ID, a broker announced in `GET /notifiers` that is not an `mqtt://` or `mqtts://` URL, a set of topics the VTN names no topic for, and a broker without TLS announced for a login with the client's token by a VTN reached over https) |
 | `output` | `json_encode_failed`, `table_render_failed`, `output_write_failed`, `output_file_write_failed` |
 | `internal` | `internal_unexpected` |
 | `interrupted` | `context_canceled` (interrupted before a result) |
 
 ## Streaming commands
 
-`listen`, `events watch`, `vtn start` and `discover` write one record per
-event. Interrupting them (Ctrl-C, SIGTERM), `--count` or the end of
-`--duration` ends the stream normally: exit 0.
+`listen`, `events watch` and `vtn start` write one record per event.
+Interrupting them (Ctrl-C, SIGTERM), `--count` or the end of `--duration`
+ends the stream normally: exit 0. `discover` writes one result, at its end.
 
 - `listen` exits with the error's code when it cannot start: the
   subscription is refused (6), the WebSocket or the broker cannot be reached
@@ -101,8 +102,13 @@ event. Interrupting them (Ctrl-C, SIGTERM), `--count` or the end of
   sent the token in the clear: give `--broker` to choose that broker
   anyway. With `--via webhook`, a request that does not arrive whole within
   `--timeout` is cut off. A `--duration` that ends before the WebSocket or the broker is ready
-  is a failure (4), not an end.
-- `events watch` exits with the error's code when a search fails.
+  is a failure (4), not an end. A connection that is lost later is made
+  again, with `warning:` and `listening: … again` lines on stderr; with
+  `--via mqtt`, a login the broker refuses then ends the command with 4
+  (with the client's token as the password: after one more login with a new
+  token).
+- `events watch` exits with the error's code when a search fails, 6 for a
+  search past `--max-objects` or past what a search keeps.
 - `vtn start` exits 3 when its seed, certificates or flags are invalid
   (every problem of a seed is reported at once), and 4 when it cannot listen.
 - `discover` exits 4 when it cannot use multicast; finding no VTN is a

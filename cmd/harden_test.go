@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/otfabric/openadrctl/internal/oadr"
+	"github.com/otfabric/openadrctl/internal/types"
 )
 
 type errorEnvelope struct {
@@ -89,5 +90,23 @@ func TestOutputEscapesControlCharacters(t *testing.T) {
 	r = must(t, 0, "bl", "programs", "create", "--file", path, "--dry-run", "--format", "json")
 	if p := decode[map[string]any](t, r); p["programName"] != "p\x1b]0;pwned\a\tTAB\nNL" {
 		t.Errorf("json: %q", p["programName"])
+	}
+}
+
+// The steps of ping in text are one line each, whatever the VTN, its
+// certificate or its token endpoint say.
+func TestPingTextIsOneLinePerStep(t *testing.T) {
+	const peer = "a\nb\tc\x1b[2J\u202ed"
+	p := &Ping{URL: "http://vtn", Stages: []Stage{
+		{Stage: "tls", Status: "ok", Detail: "TLS 1.3, " + peer},
+		{Stage: "api", Status: "ok", Detail: "GET /programs: " + peer},
+		{Stage: "token", Status: "failed", Error: &types.ErrorInfo{Message: peer}},
+	}}
+	s, err := p.MarshalTextOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(s, "\n") != len(p.Stages) || strings.ContainsAny(s, "\t\x1b\u202e") || !strings.Contains(s, `a\nb\tc\x1b[2J\u202ed`) {
+		t.Errorf("ping:\n%q", s)
 	}
 }

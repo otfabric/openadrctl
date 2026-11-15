@@ -97,6 +97,7 @@ type watchConfig struct {
 	Count       int           `flag:"count" desc:"Stop after this many records (0: no limit)"`
 	Duration    time.Duration `flag:"duration" desc:"Stop after this long (0: until interrupted)"`
 	ChangesOnly bool          `flag:"changes-only" desc:"Leave out the events that are there at the start"`
+	MaxObjects  int           `flag:"max-objects" desc:"Fail (exit 6) when a search returns more than this many events (0: up to the 1000000 a search keeps at most)"`
 }
 
 // Change is a record of events watch.
@@ -109,16 +110,17 @@ type Change struct {
 	row    []string
 }
 
-// MarshalTextOutput implements format.TextMarshaler.
+// MarshalTextOutput implements format.TextMarshaler. The record is one
+// line: what the VTN says of the event is escaped with format.Cell.
 func (c *Change) MarshalTextOutput() (string, error) {
-	s := fmt.Sprintf("%s  %-8s event %s", c.Time.Format(time.RFC3339), c.Change, c.ID)
+	s := fmt.Sprintf("%s  %-8s event %s", c.Time.Format(time.RFC3339), c.Change, format.Cell(c.ID))
 	if c.Name != "" {
-		s += " (" + c.Name + ")"
+		s += " (" + format.Cell(c.Name) + ")"
 	}
 	if c.row[4] != "-" {
-		s += "  start " + c.row[4]
+		s += "  start " + format.Cell(c.row[4])
 	}
-	return s + "  " + c.row[5] + " intervals " + c.row[6], nil
+	return s + "  " + format.Cell(c.row[5]) + " intervals " + format.Cell(c.row[6]), nil
 }
 
 // TableHeaders implements format.TableMarshaler.
@@ -132,7 +134,7 @@ func (c *Change) TableRows() [][]string {
 }
 
 func newWatchCmd(role Role) *cobra.Command {
-	c := watchConfig{Common: newCommon(), Interval: 30 * time.Second}
+	c := watchConfig{Common: newCommon(), Interval: 30 * time.Second, MaxObjects: defaultMaxObjects}
 	cmd := &cobra.Command{
 		Use:   "watch",
 		Short: "Search for events again and again, and print what changed",
@@ -142,7 +144,9 @@ updated (its modification time changed) or deleted after that. It needs no subsc
 webhook or broker, and works with every VTN; listen is the way to learn of changes at once.
 
 A search that fails ends the command with that failure's exit code. It exits 0 when it ends
-by --count, --duration or an interrupt.`,
+by --count, --duration or an interrupt. A search keeps at most --max-objects events
+(100000 unless it is given; 0 for up to 1000000), and at most 1 GiB of them as JSON; one
+past that ends the command with exit 6 (invalid_response).`,
 		Example: "  openadrctl ven events watch --interval 1m --target group-a\n" +
 			"  openadrctl bl events watch --program 0a1b2c3d --changes-only --format json",
 		Args: cobra.NoArgs,
@@ -157,7 +161,7 @@ by --count, --duration or an interrupt.`,
 			if c.Interval < time.Second || c.Count < 0 || c.Duration < 0 {
 				return errs.InvalidInput(errs.CodeInvalidInput, "--interval is 1s at least, and --count and --duration not negative", nil)
 			}
-			return nil
+			return checkMaxObjects(c.MaxObjects)
 		}, func(ctx context.Context, out *format.StreamWriter) (int, error) {
 			a, err := c.connect(role)
 			if err != nil {
@@ -194,6 +198,7 @@ func (c *watchConfig) poll(ctx context.Context, a *api, query func(client.Page) 
 		now := map[string]openadr.Event{}
 		var order []string
 		var failed error
+		kept := newBudget(c.MaxObjects)
 		for e, err := range client.Each(sctx, func(ctx context.Context, p client.Page) ([]openadr.Event, error) {
 			q := query(p)
 			if err := retargetQuery(c.Version(), &q); err != nil {
@@ -201,6 +206,9 @@ func (c *watchConfig) poll(ctx context.Context, a *api, query func(client.Page) 
 			}
 			return pick(a).Events(ctx, q)
 		}) {
+			if err == nil {
+				err = kept.take(e)
+			}
 			if err != nil {
 				failed = err
 				break

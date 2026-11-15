@@ -26,6 +26,11 @@ start` on a free port, with an MQTT broker in the process; they need no
 network. A test that waits for something waits for the record that says it
 happened, never for a fixed time.
 
+`TestDiscover` is the exception: it browses the real network with multicast
+DNS, and skips where multicast cannot be used (`discover` exits 4).
+`OPENADRCTL_REQUIRE_MULTICAST=1` makes that a failure; the `multicast` job of
+`ci.yml` sets it.
+
 ## Pull Requests
 
 1. Fork the repository.

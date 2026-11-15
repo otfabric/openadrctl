@@ -18,6 +18,7 @@ import (
 
 	"github.com/otfabric/openadrctl/internal/conn"
 	"github.com/otfabric/openadrctl/internal/errs"
+	"github.com/otfabric/openadrctl/internal/format"
 	"github.com/otfabric/openadrctl/internal/runner"
 	"github.com/otfabric/openadrctl/internal/types"
 )
@@ -46,16 +47,18 @@ type Ping struct {
 	Stages []Stage `json:"stages"`
 }
 
-// MarshalTextOutput implements format.TextMarshaler.
+// MarshalTextOutput implements format.TextMarshaler, one line per step:
+// what the VTN, its certificate or its token endpoint say is escaped with
+// format.Cell.
 func (p *Ping) MarshalTextOutput() (string, error) {
 	var b strings.Builder
 	for _, s := range p.Stages {
 		line := fmt.Sprintf("%-10s %-8s %5dms", s.Stage, s.Status, s.Millis)
 		if s.Detail != "" {
-			line += "  " + s.Detail
+			line += "  " + format.Cell(s.Detail)
 		}
 		if s.Error != nil {
-			line += "  " + s.Error.Message
+			line += "  " + format.Cell(s.Error.Message)
 		}
 		b.WriteString(strings.TrimRight(line, " ") + "\n")
 	}

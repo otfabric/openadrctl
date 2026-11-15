@@ -13,6 +13,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"log/slog"
 	"math/big"
@@ -225,7 +226,8 @@ func writeFile(t *testing.T, path, content string) {
 // startBroker runs an MQTT broker that lets everyone in.
 func startBroker(t *testing.T) string {
 	t.Helper()
-	return serveBroker(t, new(mqttauth.AllowHook))
+	u, _ := serveBroker(t, new(mqttauth.AllowHook))
+	return u
 }
 
 // tokenHook asks an HTTP authenticator whether a client may log in, as
@@ -234,6 +236,21 @@ func startBroker(t *testing.T) string {
 type tokenHook struct {
 	mochi.HookBase
 	url atomic.Value // string
+	// srv is the broker, so that a test can drop a client.
+	srv *mochi.Server
+	// deny refuses a login whatever the authenticator says, when it is set
+	// and tells so: as a token that has expired is.
+	deny atomic.Value // func(clientID, password string) bool
+	// logins are the passwords each client ID logged in with, in order.
+	mu     sync.Mutex
+	logins map[string][]string
+}
+
+// passwords returns the passwords id logged in with so far.
+func (h *tokenHook) passwords(id string) []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.logins[id]...)
 }
 
 func (h *tokenHook) ID() string { return "token" }
@@ -243,6 +260,16 @@ func (h *tokenHook) Provides(b byte) bool {
 }
 
 func (h *tokenHook) OnConnectAuthenticate(_ *mochi.Client, pk packets.Packet) bool {
+	id, password := string(pk.Connect.ClientIdentifier), string(pk.Connect.Password)
+	h.mu.Lock()
+	if h.logins == nil {
+		h.logins = map[string][]string{}
+	}
+	h.logins[id] = append(h.logins[id], password)
+	h.mu.Unlock()
+	if deny, _ := h.deny.Load().(func(string, string) bool); deny != nil && deny(id, password) {
+		return false
+	}
 	u, _ := h.url.Load().(string)
 	if u == "" {
 		return false
@@ -262,7 +289,20 @@ func (h *tokenHook) OnACLCheck(*mochi.Client, string, bool) bool { return true }
 func startTokenBroker(t *testing.T) (string, *tokenHook) {
 	t.Helper()
 	h := new(tokenHook)
-	return serveBroker(t, h), h
+	var u string
+	u, h.srv = serveBroker(t, h)
+	return u, h
+}
+
+// drop disconnects the client id from the broker, as a broker that restarts
+// or a network that fails does.
+func (h *tokenHook) drop(t *testing.T, id string) {
+	t.Helper()
+	cl, ok := h.srv.Clients.Get(id)
+	if !ok {
+		t.Fatalf("no client %s at the broker", id)
+	}
+	cl.Stop(errors.New("dropped by the test"))
 }
 
 // closeBroker stops srv. mochi 2.7.9 can deadlock in Close when a client leaves
@@ -277,7 +317,7 @@ func closeBroker(srv *mochi.Server) {
 	}
 }
 
-func serveBroker(t *testing.T, hook mochi.Hook) string {
+func serveBroker(t *testing.T, hook mochi.Hook) (string, *mochi.Server) {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -294,7 +334,7 @@ func serveBroker(t *testing.T, hook mochi.Hook) string {
 	}
 	go func() { _ = srv.Serve() }()
 	t.Cleanup(func() { closeBroker(srv) })
-	return "mqtt://" + addr
+	return "mqtt://" + addr, srv
 }
 
 // selfSigned writes a certificate for 127.0.0.1 and localhost, and its key.

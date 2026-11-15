@@ -48,7 +48,10 @@ Most flags can come from the environment: `OPENADRCTL_VTN_LISTEN`,
 `OPENADRCTL_VTN_TLS_CERT`, `OPENADRCTL_VTN_TLS_KEY`, `OPENADRCTL_VTN_MQTT`,
 `OPENADRCTL_VTN_MQTT_PUBLIC_URL`, `OPENADRCTL_VTN_MQTT_USERNAME`,
 `OPENADRCTL_VTN_MQTT_CLIENT_AUTH`,
-`OPENADRCTL_FORMAT`.
+`OPENADRCTL_FORMAT`. Two secrets come from the environment only:
+`OPENADRCTL_VTN_MQTT_PASSWORD`, the VTN's password at the broker, and
+`OPENADRCTL_VTN_MQTT_AUTH_SECRET`, the broker's at `POST /auth/mqtt` (see
+[MQTT logins by token](#mqtt-logins-by-token)).
 
 The API is at the root of `--public-url`: `/programs`, `/events`,
 `/reports`, `/subscriptions`, `/vens`, `/notifiers`, … The token endpoint is
@@ -57,6 +60,25 @@ The API is at the root of `--public-url`: `/programs`, `/events`,
 The VTN checks the seed and its flags before it listens, reports every
 problem at once on one line, and exits 3. It exits 4 when it cannot listen.
 Ctrl-C (or `--duration`) stops it, after the requests in progress: exit 0.
+It waits 5 seconds for them; the connections of those still in progress then
+are closed, with a `log` record:
+
+```console
+2026-11-15T16:47:16Z  log            warn stopping: requests still in progress after 5s, their connections closed
+2026-11-15T16:47:16Z  stopped
+```
+
+### Limits
+
+| What | Limit |
+|------|-------|
+| A request head: the request line and the headers | 64 KiB, and 5 seconds to arrive; a larger one is answered `431` |
+| A request | A minute to arrive whole and be answered |
+| A connection without a request | Closed after two minutes |
+| A WebSocket | None of these once it is open: its pings keep it |
+
+No request the VTN serves needs that long: the slowest, a subscription whose
+callbacks the VTN checks before it answers, takes at most 40 seconds.
 
 ## The seed file
 
@@ -180,14 +202,30 @@ in the form the HTTP authenticators of brokers send:
 | `{"username": "site-42", "password": "<token>"}` (JSON, or the same as a form) | `200 {"result": "allow"}` when the token is one this VTN issued to `site-42` and has not expired |
 | `{"username": "vtn", "password": "<OPENADRCTL_VTN_MQTT_PASSWORD>"}` | `200 {"result": "allow"}`: the VTN's own publisher, with `--mqtt-username` |
 | anything else | `403 {"result": "deny"}` |
+| with `OPENADRCTL_VTN_MQTT_AUTH_SECRET` set, a request without `Authorization: Bearer <that secret>` | `401`, before its body is read |
+| the `--mqtt-username` of the VTN, after 10 wrong passwords for it within a minute | `429` with `Retry-After`, for a minute from the tenth, also with the right password; the clients' tokens are answered as before |
 
-Each answer is a `mqtt_login` record. The endpoint checks who logs in, not
+Each `200` and `403` is a `mqtt_login` record. The `401` and `429` answers
+are summed up in one `log` record a minute at most each. While the VTN's
+user name is answered 429, the broker refuses the VTN's own login, and the
+VTN publishes once it is let in again. The `401` record:
+
+```console
+2026-11-15T16:47:44Z  log            warn POST /auth/mqtt: requests without the broker's secret answered 401 since the last such record: 1 (one record a minute at most)
+```
+
+Without `OPENADRCTL_VTN_MQTT_AUTH_SECRET`, `POST /auth/mqtt` answers whoever
+reaches the VTN: set it, and give the broker's authenticator the same secret
+in its `Authorization` header, as below. Give the VTN's publisher a long
+random password in `OPENADRCTL_VTN_MQTT_PASSWORD` (`openssl rand -hex 32`):
+the endpoint checks it as it checks a token. The endpoint checks who logs in, not
 which topics they read: a broker that should keep a VEN to its own topics
 needs rules of its own. EMQX, for instance:
 
 ```bash
+# OPENADRCTL_VTN_MQTT_PASSWORD and OPENADRCTL_VTN_MQTT_AUTH_SECRET=<broker secret> set
 openadrctl vtn start --listen 0.0.0.0:8080 --public-url http://vtn.example:8080 \
-    --mqtt mqtt://emqx.example:1883 --mqtt-client-auth token --mqtt-username vtn   # OPENADRCTL_VTN_MQTT_PASSWORD set
+    --mqtt mqtt://emqx.example:1883 --mqtt-client-auth token --mqtt-username vtn
 
 docker run -d -p 1883:1883 \
   -e EMQX_AUTHENTICATION__1__MECHANISM=password_based \
@@ -195,7 +233,7 @@ docker run -d -p 1883:1883 \
   -e EMQX_AUTHENTICATION__1__METHOD=post \
   -e EMQX_AUTHENTICATION__1__URL=http://vtn.example:8080/auth/mqtt \
   -e 'EMQX_AUTHENTICATION__1__BODY={"username":"${username}","password":"${password}"}' \
-  -e 'EMQX_AUTHENTICATION__1__HEADERS={"content-type":"application/json"}' \
+  -e 'EMQX_AUTHENTICATION__1__HEADERS={"content-type":"application/json","authorization":"Bearer <broker secret>"}' \
   emqx/emqx:6.3.1
 ```
 
