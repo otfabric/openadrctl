@@ -8,11 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	openadr "github.com/otfabric/go-openadr"
 	"github.com/otfabric/go-openadr/client"
@@ -188,15 +191,26 @@ func (s *TokenSource) fetch(ctx context.Context) (*Token, error) {
 		return nil, fmt.Errorf("%w: the token endpoint answered with more than %d bytes", openadr.ErrProtocol, maxTokenResponse)
 	}
 	var r struct {
-		Token
-		Error            string `json:"error"`
-		ErrorDescription string `json:"error_description"`
+		AccessToken      string          `json:"access_token"`
+		TokenType        string          `json:"token_type"`
+		ExpiresIn        json.RawMessage `json:"expires_in"`
+		Scope            string          `json:"scope"`
+		Error            string          `json:"error"`
+		ErrorDescription string          `json:"error_description"`
 	}
+	// The body of an error response is not always JSON; the status decides.
 	decodeErr := json.Unmarshal(body, &r)
 	if resp.StatusCode != http.StatusOK {
 		return nil, &client.TokenError{StatusCode: resp.StatusCode, Code: r.Error, Description: r.ErrorDescription}
 	}
-	if decodeErr != nil || r.AccessToken == "" {
+	var expires float64
+	if decodeErr == nil {
+		expires, decodeErr = expiresIn(r.ExpiresIn)
+	}
+	if decodeErr != nil {
+		return nil, fmt.Errorf("%w: the token endpoint answered 200 with what is not a token response: %v", openadr.ErrProtocol, decodeErr)
+	}
+	if r.AccessToken == "" {
 		return nil, fmt.Errorf("%w: the token endpoint answered 200 without an access_token", openadr.ErrProtocol)
 	}
 	if !strings.EqualFold(r.TokenType, "Bearer") {
@@ -206,14 +220,56 @@ func (s *TokenSource) fetch(ctx context.Context) (*Token, error) {
 		// Neither sent in a header nor printed: it could forge either.
 		return nil, fmt.Errorf("%w: the token endpoint issued an access_token with characters a bearer token does not have", openadr.ErrProtocol)
 	}
-	t := r.Token
-	t.TokenURL = redacted(s.TokenURL)
-	if t.ExpiresIn > 0 {
-		t.Expires = time.Now().Add(Lifetime(t.ExpiresIn)).UTC().Truncate(time.Second)
-	} else {
-		t.ExpiresIn = 0
+	t := Token{AccessToken: r.AccessToken, TokenType: r.TokenType, Scope: r.Scope, TokenURL: redacted(s.TokenURL)}
+	if expires > 0 {
+		t.ExpiresIn = expires
+		t.Expires = time.Now().Add(Lifetime(expires)).UTC().Truncate(time.Second)
 	}
 	return &t, nil
+}
+
+// expiresIn reads the expires_in of a token response: a number of seconds
+// (RFC 6749 section 5.1), or a string of digits, as some identity providers
+// send it, as go-openadr's client reads it. None, null, and a number that is
+// not positive are 0: no expiry known. A number no float64 holds is taken as
+// the longest lifetime.
+func expiresIn(raw json.RawMessage) (float64, error) {
+	s := string(raw)
+	switch {
+	case len(raw) == 0 || s == "null":
+		return 0, nil
+	case raw[0] == '"':
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return 0, err
+		}
+		if s == "" || strings.Trim(s, "0123456789") != "" {
+			return 0, fmt.Errorf("expires_in %q is not a number of seconds", clip(s))
+		}
+	case raw[0] != '-' && (raw[0] < '0' || raw[0] > '9'):
+		return 0, fmt.Errorf("expires_in %s is not a number of seconds", clip(s))
+	}
+	// A JSON number or digits: only the range can fail.
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil && !errors.Is(err, strconv.ErrRange) {
+		return 0, fmt.Errorf("expires_in %q is not a number of seconds", clip(s))
+	}
+	if math.IsInf(f, 1) {
+		return maxTokenLifetime.Seconds(), nil
+	}
+	return max(f, 0), nil
+}
+
+// clip shortens a value quoted in a message to 32 bytes.
+func clip(s string) string {
+	const n = 32
+	if len(s) <= n {
+		return s
+	}
+	cut := n
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "..."
 }
 
 // discover asks the VTN for its token endpoint.

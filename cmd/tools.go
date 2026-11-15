@@ -119,6 +119,10 @@ func (d *Discovered) TableRows() [][]string {
 	return rows
 }
 
+// browse asks the network for VTNs; the tests that need no multicast
+// replace it.
+var browse = discovery.Browse
+
 func newDiscoverCmd() *cobra.Command {
 	c := discoverConfig{Wait: 3 * time.Second, Format: "text"}
 	cmd := &cobra.Command{
@@ -143,7 +147,7 @@ found before giving it credentials.`,
 				}
 				return nil
 			}, func(ctx context.Context) (any, error) {
-				vtns, err := discovery.Browse(ctx, discovery.Options{Timeout: c.Wait, First: c.First})
+				vtns, err := browse(ctx, discovery.Options{Timeout: c.Wait, First: c.First})
 				if err != nil {
 					return nil, errs.New(errs.KindTransport, errs.CodeTransportConnectFailed, "multicast DNS: "+err.Error(), err)
 				}

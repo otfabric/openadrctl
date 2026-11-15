@@ -4,6 +4,40 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.9.0
+
+**Date:** 2026-11-15
+**Previous release:** v0.8.0
+
+Bounds the searches of the client commands and the requests of `vtn start`, ends `listen --via mqtt` on a refused login, writes text records one line each, and limits wrong publisher passwords at `POST /auth/mqtt`. Still built on go-openadr v0.8.0.
+
+### Breaking
+
+- **`--max-objects` defaults to 100000** on every `list` and on `events watch`: a search that returned more objects in v0.8.0 now ends with exit 6 (`invalid_response`), with a message to narrow the search. To keep the old handling, give `--max-objects 0`; the bound of every search under Changed still applies.
+- **`vtn start --mqtt-client-auth token`: after 10 wrong passwords within a minute for the VTN's `--mqtt-username`, `POST /auth/mqtt` answers that user name 429 for a minute**, with `Retry-After`, also with the right password, summed up in one `log` record a minute at most. The clients' tokens are answered as before. While it lasts the broker refuses the VTN's own login, and the VTN publishes once it is let in again. There is no option for the old handling; give the publisher a long random password (`openssl rand -hex 32`).
+- **`listen --via mqtt`: a login the broker refuses ends the command with exit 4** (`transport_connect_failed`). At the start this happens at once instead of after `--timeout`. After a reconnect (with the client's token: after one more login with a new token) it ends the command, where v0.8.0 went on without a connection until `--duration` or an interrupt, and then exited 0. A script that relied on that exit 0 sees exit 4 now; there is no option for the old handling.
+
+### Added
+
+- `--max-objects` on every `list` and on `events watch`: a search that returns more objects than that ends the command with exit 6 (`invalid_response`). The default is under Breaking.
+- `vtn start`: `OPENADRCTL_VTN_MQTT_AUTH_SECRET`, with `--mqtt-client-auth token`. When it is set, `POST /auth/mqtt` answers only a request that carries it as its bearer token, as the broker's HTTP authenticator is configured to send it (`Authorization: Bearer <secret>`); any other request is answered 401 before its body is read, and these are summed up in one `log` record a minute at most. Without it nothing changes. docs/server-config.md shows the EMQX header.
+
+### Changed
+
+- A search of the client commands (every `list` without `--limit`, and each search of `events watch`) keeps at most 1000000 objects, and at most 1 GiB of them as JSON. One past either ends the command with exit 6 (`invalid_response`), with a message to narrow the search; before, a search went on for as long as the VTN sent full pages.
+- `vtn start`: a request head holds at most 64 KiB (a larger one is answered 431; it still has 5 seconds to arrive), a request has a minute to arrive and be answered, and a connection without a request is closed after two minutes. An open WebSocket is not bound by these. Stopping still waits 5 seconds for the requests in progress, and then closes their connections, with a `log` record at `warn`.
+- `listen`: a WebSocket or broker connection that is lost is a `warning:` line on stderr, and `listening: ... again` says when it is back; the subscribers report what they log at warning level there. With `--via mqtt` and the client's token as the password, the login after a reconnect uses a new token once the one it had is near its expiry, or when the broker refuses it.
+- The text records of `listen` and `events watch`, and the text of `notifiers`, `topics` and `ping`, are one line per record: what the VTN or the broker sent in them is escaped as in error messages (`\n`, `\x1b`, ...). `--format json` is unchanged.
+- `--debug` writes each cause of an error on one `cause:` line, escaped as the message is, and cut after 1024 bytes.
+- The token client accepts `expires_in` as a string of digits, as the v0.8.0 notes said; another string is refused (`expires_in "..." is not a number of seconds`). An answer of the token endpoint that is not a token response is reported as such, no longer as an answer without an access_token. A JSON number too large for a float64 is taken as the longest lifetime, as 1e300 was.
+- README.md and docs/exitcodes.md no longer count `discover` among the commands that write a record per event: it writes one result.
+
+### Tests
+
+- `TestDiscover` browses the real network, and skips where `discover` cannot use multicast (exit 4); `OPENADRCTL_REQUIRE_MULTICAST=1` makes that a failure. A new `multicast` job of `ci.yml` sets it. `TestDiscoverResult` checks the result without the network.
+
+---
+
 ## v0.8.0
 
 **Date:** 2026-11-15

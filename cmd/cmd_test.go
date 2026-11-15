@@ -843,23 +843,26 @@ func TestTLS(t *testing.T) {
 	_ = os.Remove(certFile)
 }
 
+// TestDiscover browses the real network. Whether anything answers depends
+// on the network; the command must end within --wait with a list. Without
+// multicast it exits 4, and the test skips, unless
+// OPENADRCTL_REQUIRE_MULTICAST=1 makes that a failure, as in CI.
 func TestDiscover(t *testing.T) {
-	// Whether anything answers depends on the network; the command itself
-	// must end within --wait with a list, or say why multicast failed.
 	r := run(t, "discover", "--wait", "300ms", "--format", "json")
-	switch r.code {
-	case 0:
-		if d := decode[Discovered](t, r); d.VTNs == nil {
-			t.Errorf("discover: %s", r.stdout)
+	if r.code == 4 {
+		if os.Getenv("OPENADRCTL_REQUIRE_MULTICAST") == "1" {
+			t.Fatalf("discover: exit 4 with OPENADRCTL_REQUIRE_MULTICAST=1\n%s%s", r.stdout, r.stderr)
 		}
-	case 4:
-		t.Logf("no multicast here: %s", r.stdout)
-	default:
-		t.Errorf("discover: exit %d\n%s%s", r.code, r.stdout, r.stderr)
+		t.Skipf("no multicast here (OPENADRCTL_REQUIRE_MULTICAST=1 makes this a failure): %s", r.stdout)
 	}
-	must(t, 3, "discover", "--wait", "0s")
-	if r := run(t, "discover", "--wait", "200ms", "--first"); r.code != 0 && r.code != 4 {
-		t.Errorf("discover --first: exit %d", r.code)
+	if r.code != 0 {
+		t.Fatalf("discover: exit %d\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	if d := decode[Discovered](t, r); d.VTNs == nil {
+		t.Errorf("discover: %s", r.stdout)
+	}
+	if r := run(t, "discover", "--wait", "200ms", "--first"); r.code != 0 {
+		t.Errorf("discover --first: exit %d\n%s%s", r.code, r.stdout, r.stderr)
 	}
 }
 

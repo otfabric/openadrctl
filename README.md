@@ -309,6 +309,7 @@ sets the VTN and the client once.
 | `OPENADRCTL_VTN_LISTEN`, `OPENADRCTL_VTN_PUBLIC_URL`, `OPENADRCTL_VTN_CONFIG`, `OPENADRCTL_VTN_STORE`, `OPENADRCTL_VTN_TLS_CERT`, `OPENADRCTL_VTN_TLS_KEY` | `--listen`, `--public-url`, `--config`, `--store`, `--tls-cert`, `--tls-key` of `vtn start` |
 | `OPENADRCTL_VTN_MQTT`, `OPENADRCTL_VTN_MQTT_PUBLIC_URL`, `OPENADRCTL_VTN_MQTT_USERNAME`, `OPENADRCTL_VTN_MQTT_CLIENT_AUTH` | `--mqtt`, `--mqtt-public-url`, `--mqtt-username`, `--mqtt-client-auth` of `vtn start` |
 | `OPENADRCTL_VTN_MQTT_PASSWORD` | (no flag: the password of `vtn start` at its broker) |
+| `OPENADRCTL_VTN_MQTT_AUTH_SECRET` | (no flag: the broker's secret at `POST /auth/mqtt` of `vtn start --mqtt-client-auth token`) |
 
 </details>
 
@@ -320,8 +321,8 @@ number that does not parse) exits 3.
 Results go to stdout: text by default, `--format table`, or `--format json`
 ([fields](docs/json-output.md)). Objects are JSON as OpenADR 3.1.0 has them,
 or 3.0.1 with `--spec 3.0.1`, so that `get --format json` can be edited and sent back with `--file`.
-Streams (`listen`, `events watch`, `vtn start`, `discover`) write a record per
-event, JSON Lines with `--format json`. Progress and diagnostics go to stderr.
+Streams (`listen`, `events watch`, `vtn start`) write a record per
+event, JSON Lines with `--format json`; `discover` writes one result. Progress and diagnostics go to stderr.
 
 | Code | Meaning |
 |------|---------|

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -77,8 +78,14 @@ func newListenCmd(role Role) *cobra.Command {
                 VTN, and subscribes to them at the broker. No subscription is created.
 
 Only what happens while listening is received: notifications are not kept for a client that
-is away. Progress goes to stderr. The command exits 0 when it ends by --count, --duration or
-an interrupt, 4 when the WebSocket or broker cannot be reached at the start.`,
+is away. Progress goes to stderr. A WebSocket or broker connection that is lost is a warning
+there; it is made again, and "listening: ... again" says when it is back. With --via mqtt
+and the client's token as the password, the login after a reconnect uses a new token once
+the one it had is near its expiry, or when the broker refuses it.
+
+The command exits 0 when it ends by --count, --duration or an interrupt, 4 when the
+WebSocket or broker cannot be reached at the start, and 4 when the broker refuses the login,
+at the start or after a reconnect (with the client's token: also a new one).`,
 		Example: `  openadrctl ven listen --via websocket --object EVENT
   openadrctl ven listen --via webhook --listen 0.0.0.0:8443 --callback-url https://site-42.example:8443/ \
       --tls-cert site.pem --tls-key site.key --object EVENT --object PROGRAM
@@ -209,11 +216,12 @@ func KindOf(v any) *oadr.Kind {
 	return nil
 }
 
-// MarshalTextOutput implements format.TextMarshaler.
+// MarshalTextOutput implements format.TextMarshaler. The record is one
+// line: what the notification says is escaped with format.Cell.
 func (n *Notification) MarshalTextOutput() (string, error) {
-	s := fmt.Sprintf("%s  %-9s %-12s %-6s %s", n.Time.Format(time.RFC3339), n.Via, n.ObjectType, n.Operation, n.ID)
+	s := fmt.Sprintf("%s  %-9s %-12s %-6s %s", n.Time.Format(time.RFC3339), n.Via, format.Cell(n.ObjectType), format.Cell(n.Operation), format.Cell(n.ID))
 	if n.Name != "" {
-		s += " (" + n.Name + ")"
+		s += " (" + format.Cell(n.Name) + ")"
 	}
 	return s, nil
 }
@@ -301,7 +309,7 @@ func (c *listenConfig) run(ctx context.Context, cmd *cobra.Command, role Role, s
 		ctx, cancel = context.WithTimeout(ctx, c.Duration)
 		defer cancel()
 	}
-	progress := cmd.ErrOrStderr()
+	progress := &lockedWriter{w: cmd.ErrOrStderr()}
 	s := newSink(out, c.Count)
 	switch c.Via {
 	case "mqtt":
@@ -386,9 +394,13 @@ func (c *listenConfig) runWebSocket(ctx context.Context, a *api, sel *selection,
 		return 0, err
 	}
 	defer unsubscribe()
+	// A WebSocket that was lost is a warning, and opened again with the
+	// client's token of the moment.
 	sub, err := websocket.NewSubscriber(websocket.SubscriberConfig{
-		Dial:   pick(a).NotificationStream,
-		Notify: func(_ context.Context, n openadr.Notification) { s.write(notificationOf("websocket", "", n)) },
+		Dial:    pick(a).NotificationStream,
+		Notify:  func(_ context.Context, n openadr.Notification) { s.write(notificationOf("websocket", "", n)) },
+		Logger:  slog.New(&warnings{w: progress}),
+		Metrics: &streamReport{progress: progress},
 	})
 	if err != nil {
 		return 0, errs.InvalidInput(errs.CodeInvalidConfig, err.Error(), err)
@@ -551,24 +563,131 @@ func (c *listenConfig) runMQTT(ctx context.Context, a *api, s *sink, progress io
 			return 0, errs.New(errs.KindProtocol, errs.CodeInvalidResponse, fmt.Sprintf("the VTN names no MQTT topic for %s", name), nil)
 		}
 	}
-	sub, err := mqtt.NewSubscriber(mqtt.SubscriberConfig{Broker: broker, Topics: filters,
-		Notify: func(_ context.Context, topic string, n openadr.Notification) {
-			s.write(notificationOf("mqtt", topic, n))
-		}})
-	if err != nil {
-		return 0, errs.InvalidInput(errs.CodeInvalidConfig, err.Error(), err)
-	}
-	defer func() { _ = sub.Close() }()
-	rctx, rcancel := context.WithTimeout(ctx, c.Timeout)
-	defer rcancel()
-	if err := sub.Ready(rctx); err != nil {
-		if interrupted(ctx) {
-			return errs.ExitOK, nil
+	// The client's token as the password is renewed: it is the token of the
+	// moment, which the broker may refuse once it has expired.
+	renew := broker.Password != "" && method == openadr.MQTTBearerToken && c.MQTTPasswordFile == "" && c.MQTTPassword == "" && a.conn.Tokens != nil
+	w := newBrokerWatch(progress, shown, conn.Clean(strings.Join(filters, " ")))
+	var sub *mqtt.Subscriber
+	defer func() {
+		if sub != nil {
+			_ = sub.Close()
 		}
-		return 0, errs.New(errs.KindTransport, errs.CodeTransportConnectFailed, fmt.Sprintf("the broker %s: not subscribed (a login the broker refuses? see --mqtt-username and --mqtt-password-file): %s", shown, conn.Clean(err.Error())), err)
+	}()
+	// login replaces the subscriber with one that logs in with password.
+	login := func(password string) error {
+		if sub != nil {
+			_ = sub.Close()
+		}
+		broker.Password = password
+		logger, report := w.next()
+		var err error
+		sub, err = mqtt.NewSubscriber(mqtt.SubscriberConfig{Broker: broker, Topics: filters, Logger: logger, Metrics: report,
+			Notify: func(_ context.Context, topic string, n openadr.Notification) {
+				s.write(notificationOf("mqtt", topic, n))
+			}})
+		if err != nil {
+			return errs.InvalidInput(errs.CodeInvalidConfig, err.Error(), err)
+		}
+		return nil
 	}
-	_, _ = fmt.Fprintf(progress, "listening: %s, %s\n", shown, conn.Clean(strings.Join(filters, " ")))
-	return s.wait(ctx)
+	if err := login(broker.Password); err != nil {
+		return 0, err
+	}
+	// token is the client's token, a new one when the broker refused the
+	// one it has.
+	token := func(refused string) (string, error) {
+		if refused != "" {
+			a.conn.Tokens.Invalidate(refused)
+		}
+		tctx, tcancel := context.WithTimeout(ctx, c.Timeout)
+		defer tcancel()
+		return a.conn.Tokens.Token(tctx)
+	}
+	return c.watchBroker(ctx, s, w, broker.Password, renew, login, token, progress)
+}
+
+// watchBroker runs listen --via mqtt once the first subscriber has been made:
+// until it is subscribed, at most --timeout, and then until the stream ends.
+// A login the broker refuses ends the command with exit 4, after one more
+// attempt with a new token when the password is the client's token. With
+// such a password, a connection that was lost is made again with a new
+// token once the one it had is near its expiry.
+func (c *listenConfig) watchBroker(ctx context.Context, s *sink, w *brokerWatch, password string, renew bool,
+	login func(string) error, token func(refused string) (string, error), progress io.Writer) (int, error) {
+	start := time.NewTimer(c.Timeout)
+	defer start.Stop()
+	subscribed := false
+	// fresh is a token that was had for this login: when the broker refuses
+	// it, a new one will not do better.
+	fresh := true
+	notSubscribed := func(err error) error {
+		_, _, _, last := w.state()
+		if last != nil {
+			err = last
+		}
+		return errs.New(errs.KindTransport, errs.CodeTransportConnectFailed,
+			fmt.Sprintf("the broker %s: not subscribed: %s", w.shown, conn.Clean(err.Error())), err)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			if !subscribed {
+				if interrupted(ctx) {
+					return errs.ExitOK, nil
+				}
+				return 0, notSubscribed(ctx.Err())
+			}
+			return s.wait(ctx)
+		case <-s.done:
+			return s.wait(ctx)
+		case <-start.C:
+			if !subscribed {
+				return 0, notSubscribed(context.DeadlineExceeded)
+			}
+		case <-w.wake:
+		}
+		up, lost, refused, _ := w.state()
+		if up {
+			subscribed, fresh = true, false
+		}
+		switch {
+		case refused != nil && renew && !fresh:
+			t, err := token(password)
+			if err != nil {
+				return 0, conn.Classify(err, false)
+			}
+			_, _ = fmt.Fprintf(progress, "reconnecting: %s refused the token, logging in with a new one\n", w.shown)
+			password, fresh = t, true
+			if err := login(password); err != nil {
+				return 0, err
+			}
+		case refused != nil:
+			msg := fmt.Sprintf("the broker %s refused the login: not subscribed (see --mqtt-username and --mqtt-password-file): %s", w.shown, conn.Clean(refused.Error()))
+			switch {
+			case subscribed && renew:
+				msg = fmt.Sprintf("the broker %s refused the login again after a reconnect, also with a new token: no longer subscribed: %s", w.shown, conn.Clean(refused.Error()))
+			case subscribed:
+				msg = fmt.Sprintf("the broker %s refused the login again after a reconnect: no longer subscribed: %s", w.shown, conn.Clean(refused.Error()))
+			}
+			s.fail(errs.New(errs.KindTransport, errs.CodeTransportConnectFailed, msg, refused))
+			return s.wait(ctx)
+		case lost && renew:
+			// The token of the moment: the one it has, unless that is near
+			// its expiry.
+			t, err := token("")
+			if err != nil {
+				_, _ = fmt.Fprintf(progress, "warning: no new token for the broker: %s\n", conn.Clean(err.Error()))
+				continue
+			}
+			if t != password {
+				_, _ = fmt.Fprintf(progress, "reconnecting: %s with a new token\n", w.shown)
+				password, fresh = t, true
+				if err := login(password); err != nil {
+					return 0, err
+				}
+			}
+		}
+	}
 }
 
 // brokerURL tells whether s is a URL of a broker: mqtt, mqtts, or as

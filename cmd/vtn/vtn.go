@@ -71,6 +71,7 @@ type startConfig struct {
 	MQTT             string        `flag:"mqtt" env:"OPENADRCTL_VTN_MQTT" desc:"MQTT broker to publish notifications to, such as mqtt://127.0.0.1:1883"`
 	MQTTUsername     string        `flag:"mqtt-username" env:"OPENADRCTL_VTN_MQTT_USERNAME" desc:"User name at the broker"`
 	MQTTPassword     string        `env:"OPENADRCTL_VTN_MQTT_PASSWORD"`
+	MQTTAuthSecret   string        `env:"OPENADRCTL_VTN_MQTT_AUTH_SECRET"`
 	MQTTPublicURL    string        `flag:"mqtt-public-url" env:"OPENADRCTL_VTN_MQTT_PUBLIC_URL" desc:"URL of the broker as clients reach it (default: --mqtt)"`
 	MQTTClientAuth   string        `flag:"mqtt-client-auth" env:"OPENADRCTL_VTN_MQTT_CLIENT_AUTH" desc:"How clients log in to the broker: anonymous, or token (their OAuth2 token as the password, checked by the broker at POST /auth/mqtt)"`
 	ResourceGroups   bool          `flag:"resource-groups" desc:"Serve resource groups (extension, not OpenADR 3.1.0)"`
@@ -98,15 +99,18 @@ Notifications: --webhooks (or --insecure-webhooks for callbacks on this machine)
 (a broker of your own: the VTN publishes, the broker is not part of openadrctl), and
 --websocket (an extension). --mqtt-client-auth token has clients log in to the broker with
 their OAuth2 token, and serves POST /auth/mqtt for the broker's HTTP authenticator (such as
-EMQX's) to check it. With --store and webhooks, notifications that are not yet delivered
-survive a restart.
+EMQX's) to check it; with OPENADRCTL_VTN_MQTT_AUTH_SECRET set, only a request that carries
+that secret as its bearer token is answered. With --store and webhooks, notifications that
+are not yet delivered survive a restart.
 
 Records go to stdout, one per thing that happens: listening, client, seeded, then request
 (with --log-requests), notification, socket_opened, socket_closed and log, and stopped at
 the end. With --format json they are JSON Lines. The seed is checked before anything
 listens; every problem is reported, and the command exits 3.
 
-It serves plain http unless --tls-cert and --tls-key are given.`,
+It serves plain http unless --tls-cert and --tls-key are given. A request has a minute to
+arrive and be answered, a connection without a request is closed after two minutes, and a
+request head holds at most 64 KiB.`,
 		Example: `  openadrctl vtn start
   openadrctl vtn start --config seed.yaml --store vtn.db --insecure-webhooks --websocket
   openadrctl vtn start --listen 0.0.0.0:8443 --public-url https://vtn.example:8443 \
@@ -150,6 +154,9 @@ func (c *startConfig) validate() error {
 		}
 	default:
 		return errs.InvalidInput(errs.CodeInvalidInput, fmt.Sprintf("--mqtt-client-auth %q: anonymous or token", c.MQTTClientAuth), nil)
+	}
+	if c.MQTTAuthSecret != "" && c.MQTTClientAuth != "token" {
+		return errs.InvalidInput(errs.CodeInvalidFlagCombination, "OPENADRCTL_VTN_MQTT_AUTH_SECRET is the broker's secret at POST /auth/mqtt: it needs --mqtt-client-auth token", nil)
 	}
 	if math.IsNaN(c.Rate) || math.IsInf(c.Rate, 0) {
 		return errs.InvalidInput(errs.CodeInvalidInput, fmt.Sprintf("--rate %v: a finite number of requests a second", c.Rate), nil)
@@ -394,11 +401,14 @@ func (c *startConfig) run(ctx context.Context, out *format.StreamWriter) (int, e
 	var handler http.Handler = vtn
 	if c.MQTTClientAuth == "token" {
 		mux := http.NewServeMux()
-		mux.Handle("/auth/mqtt", &mqttAuth{issuer: issuer, username: c.MQTTUsername, password: c.MQTTPassword, rec: rec})
+		mux.Handle("/auth/mqtt", &mqttAuth{issuer: issuer, username: c.MQTTUsername, password: c.MQTTPassword, secret: c.MQTTAuthSecret, rec: rec})
 		mux.Handle("/", vtn)
 		handler = mux
 	}
-	hs := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ErrorLog: log.New(io.Discard, "", 0)}
+	// The limits as they are now: a server keeps those it started with.
+	limit, stopWait := requestTimeout, shutdownTimeout
+	hs := &http.Server{Handler: withDeadlines(handler, limit), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: idleTimeout,
+		MaxHeaderBytes: maxHeaderBytes, ErrorLog: log.New(io.Discard, "", 0)}
 	if c.TLSCert != "" {
 		l = tls.NewListener(l, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
 	}
@@ -430,11 +440,15 @@ func (c *startConfig) run(ctx context.Context, out *format.StreamWriter) (int, e
 	case <-ctx.Done():
 	case serveErr = <-served:
 	}
-	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdown, cancel := context.WithTimeout(context.Background(), stopWait)
 	defer cancel()
 	// The WebSockets and the outbox first: they are not the HTTP server's.
 	_ = vtn.Close()
-	_ = hs.Shutdown(shutdown)
+	if err := hs.Shutdown(shutdown); err != nil {
+		// Requests still in progress: their connections are closed.
+		_ = hs.Close()
+		rec.emit(&Record{Event: "log", Level: "warn", Message: fmt.Sprintf("stopping: requests still in progress after %s, their connections closed", stopWait)})
+	}
 	if sender != nil {
 		_ = sender.Close(shutdown)
 	}
@@ -451,6 +465,33 @@ func (c *startConfig) run(ctx context.Context, out *format.StreamWriter) (int, e
 		return 0, errs.Output(errs.CodeOutputWriteFailed, rec.err)
 	}
 	return errs.ExitOK, nil
+}
+
+// The limits of the HTTP server of vtn start. A request has requestTimeout
+// to arrive and to be answered: a body is 1 MiB at most, and a client gives
+// up long before. A connection without a request is closed after
+// idleTimeout, longer than the 90 s a Go client keeps one, so that the
+// client closes it first. A request head holds maxHeaderBytes at most.
+// stopping waits shutdownTimeout for the requests in progress. They are
+// variables for the tests.
+var (
+	requestTimeout  = time.Minute
+	idleTimeout     = 2 * time.Minute
+	maxHeaderBytes  = 64 << 10
+	shutdownTimeout = 5 * time.Second
+)
+
+// withDeadlines gives each request limit to arrive and to be answered. A
+// WebSocket takes its connection over, and go-openadr clears these
+// deadlines then: the stream has its own pings and pongs.
+func withDeadlines(h http.Handler, limit time.Duration) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rc := http.NewResponseController(w)
+		end := time.Now().Add(limit)
+		_ = rc.SetReadDeadline(end)
+		_ = rc.SetWriteDeadline(end)
+		h.ServeHTTP(w, r)
+	})
 }
 
 // advertise announces the VTN with DNS-SD at the address clients reach it

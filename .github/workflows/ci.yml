@@ -42,3 +42,19 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make coverage-pkg-check
+
+  # TestDiscover browses the real network and skips where there is no
+  # multicast (exit 4); here that is a failure, so that a discover that
+  # cannot open its socket does not pass.
+  multicast:
+    name: Discover with multicast
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OPENADRCTL_REQUIRE_MULTICAST: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 -run '^TestDiscover$' ./cmd

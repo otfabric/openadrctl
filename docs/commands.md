@@ -116,6 +116,7 @@ Alias: `ls`.
 |------|------|---------|---------|
 | `--active` | bool |  | Leave out events that are over |
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--program` | string |  | Events of this program |
 | `--skip` | int |  | Skip this many objects (one page only) |
 | `--target` | strings |  | Events with one of these targets (repeatable) |
@@ -181,6 +182,7 @@ openadrctl bl events watch [flags]
 | `--count` | int |  | Stop after this many records (0: no limit) |
 | `--duration` | duration |  | Stop after this long (0: until interrupted) |
 | `--interval` | duration | 30s | Time between two searches |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many events (0: up to the 1000000 a search keeps at most) |
 | `--program` | string |  | Events of this program |
 | `--target` | strings |  | Events with one of these targets (repeatable) |
 
@@ -295,6 +297,7 @@ Alias: `ls`.
 | Flag | Type | Default | Meaning |
 |------|------|---------|---------|
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--skip` | int |  | Skip this many objects (one page only) |
 | `--target` | strings |  | Programs with one of these targets (repeatable) |
 
@@ -353,6 +356,7 @@ Alias: `ls`.
 | `--client-name` | string |  | Reports with this client name |
 | `--event` | string |  | Reports on this event |
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--program` | string |  | Reports on events of this program |
 | `--skip` | int |  | Skip this many objects (one page only) |
 
@@ -424,6 +428,7 @@ Alias: `ls`.
 | Flag | Type | Default | Meaning |
 |------|------|---------|---------|
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--name` | string |  | Groups of this name |
 | `--skip` | int |  | Skip this many objects (one page only) |
 | `--target` | strings |  | Groups with one of these targets (repeatable) |
@@ -521,6 +526,7 @@ Alias: `ls`.
 | Flag | Type | Default | Meaning |
 |------|------|---------|---------|
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--name` | string |  | Resources of this name |
 | `--skip` | int |  | Skip this many objects (one page only) |
 | `--target` | strings |  | Resources with one of these targets (repeatable) |
@@ -619,6 +625,7 @@ Alias: `ls`.
 |------|------|---------|---------|
 | `--client-name` | string |  | Subscriptions of this client name |
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--object` | strings |  | Subscriptions to one of these kinds of object (repeatable): PROGRAM, EVENT, ... |
 | `--program` | string |  | Subscriptions to this program |
 | `--skip` | int |  | Skip this many objects (one page only) |
@@ -724,6 +731,7 @@ Alias: `ls`.
 | Flag | Type | Default | Meaning |
 |------|------|---------|---------|
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--name` | string |  | The VEN of this name |
 | `--skip` | int |  | Skip this many objects (one page only) |
 | `--target` | strings |  | VENs with one of these targets (repeatable) |
@@ -865,6 +873,7 @@ Alias: `ls`.
 |------|------|---------|---------|
 | `--active` | bool |  | Leave out events that are over |
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--program` | string |  | Events of this program |
 | `--skip` | int |  | Skip this many objects (one page only) |
 | `--target` | strings |  | Events with one of these targets (repeatable) |
@@ -903,6 +912,7 @@ openadrctl ven events watch [flags]
 | `--count` | int |  | Stop after this many records (0: no limit) |
 | `--duration` | duration |  | Stop after this long (0: until interrupted) |
 | `--interval` | duration | 30s | Time between two searches |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many events (0: up to the 1000000 a search keeps at most) |
 | `--program` | string |  | Events of this program |
 | `--target` | strings |  | Events with one of these targets (repeatable) |
 
@@ -981,6 +991,7 @@ Alias: `ls`.
 | Flag | Type | Default | Meaning |
 |------|------|---------|---------|
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--skip` | int |  | Skip this many objects (one page only) |
 | `--target` | strings |  | Programs with one of these targets (repeatable) |
 
@@ -1061,6 +1072,7 @@ Alias: `ls`.
 | `--client-name` | string |  | Reports with this client name |
 | `--event` | string |  | Reports on this event |
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--program` | string |  | Reports on events of this program |
 | `--skip` | int |  | Skip this many objects (one page only) |
 
@@ -1123,6 +1135,7 @@ Alias: `ls`.
 | Flag | Type | Default | Meaning |
 |------|------|---------|---------|
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--name` | string |  | Groups of this name |
 | `--skip` | int |  | Skip this many objects (one page only) |
 | `--target` | strings |  | Groups with one of these targets (repeatable) |
@@ -1199,6 +1212,7 @@ Alias: `ls`.
 | Flag | Type | Default | Meaning |
 |------|------|---------|---------|
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--name` | string |  | Resources of this name |
 | `--skip` | int |  | Skip this many objects (one page only) |
 | `--target` | strings |  | Resources with one of these targets (repeatable) |
@@ -1295,6 +1309,7 @@ Alias: `ls`.
 |------|------|---------|---------|
 | `--client-name` | string |  | Subscriptions of this client name |
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--object` | strings |  | Subscriptions to one of these kinds of object (repeatable): PROGRAM, EVENT, ... |
 | `--program` | string |  | Subscriptions to this program |
 | `--skip` | int |  | Skip this many objects (one page only) |
@@ -1398,6 +1413,7 @@ Alias: `ls`.
 | Flag | Type | Default | Meaning |
 |------|------|---------|---------|
 | `--limit` | int |  | Ask for at most this many objects, 50 at most (one page only); default: all, page by page |
+| `--max-objects` | int | 100000 | Fail (exit 6) when a search returns more than this many objects (0: up to the 1000000 a search keeps at most) |
 | `--name` | string |  | The VEN of this name |
 | `--skip` | int |  | Skip this many objects (one page only) |
 | `--target` | strings |  | VENs with one of these targets (repeatable) |

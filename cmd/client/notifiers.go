@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/otfabric/openadrctl/internal/errs"
+	"github.com/otfabric/openadrctl/internal/format"
 	"github.com/otfabric/openadrctl/internal/runner"
 )
 
@@ -50,7 +51,8 @@ func yesNo(b bool) string {
 	return "no"
 }
 
-// MarshalTextOutput implements format.TextMarshaler.
+// MarshalTextOutput implements format.TextMarshaler. Each line is one
+// line: what the VTN announces is escaped with format.Cell.
 func (n *Notifiers) MarshalTextOutput() (string, error) {
 	var b strings.Builder
 	_, _ = fmt.Fprintf(&b, "webhook:    %s\n", yesNo(n.Webhook))
@@ -59,10 +61,10 @@ func (n *Notifiers) MarshalTextOutput() (string, error) {
 		b.WriteString("mqtt:       no\n")
 		return b.String(), nil
 	}
-	_, _ = fmt.Fprintf(&b, "mqtt:       %s\n", strings.Join(n.MQTT.URIs, ", "))
-	_, _ = fmt.Fprintf(&b, "  auth:     %s\n", n.MQTT.Authentication)
+	_, _ = fmt.Fprintf(&b, "mqtt:       %s\n", format.Cell(strings.Join(n.MQTT.URIs, ", ")))
+	_, _ = fmt.Fprintf(&b, "  auth:     %s\n", format.Cell(n.MQTT.Authentication))
 	if n.MQTT.Username != "" {
-		_, _ = fmt.Fprintf(&b, "  username: %s\n", n.MQTT.Username)
+		_, _ = fmt.Fprintf(&b, "  username: %s\n", format.Cell(n.MQTT.Username))
 	}
 	return b.String(), nil
 }
@@ -172,12 +174,13 @@ type Topics struct {
 	All    string `json:"all,omitempty"`
 }
 
-// MarshalTextOutput implements format.TextMarshaler.
+// MarshalTextOutput implements format.TextMarshaler, one line per topic:
+// the VTN's topics are escaped with format.Cell.
 func (t *Topics) MarshalTextOutput() (string, error) {
 	var b strings.Builder
 	for _, x := range [][2]string{{"create", t.Create}, {"update", t.Update}, {"delete", t.Delete}, {"all", t.All}} {
 		if x[1] != "" {
-			_, _ = fmt.Fprintf(&b, "%-7s %s\n", x[0]+":", x[1])
+			_, _ = fmt.Fprintf(&b, "%-7s %s\n", x[0]+":", format.Cell(x[1]))
 		}
 	}
 	return b.String(), nil

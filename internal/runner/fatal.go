@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"unicode/utf8"
 
 	"github.com/otfabric/openadrctl/internal/errs"
 	"github.com/otfabric/openadrctl/internal/format"
@@ -87,8 +88,27 @@ func errorInfoFromErr(err error) types.ErrorInfo {
 	}
 }
 
+// maxCause is the longest cause line, in bytes, as the message of an error
+// is cut.
+const maxCause = 1024
+
+// writeCauseChain writes the causes of err, one line each. What a VTN, a
+// token endpoint or a broker put in them is escaped with format.Cell, and a
+// cause is cut after maxCause bytes with "...".
 func writeCauseChain(w io.Writer, err error) {
 	for c := errors.Unwrap(err); c != nil; c = errors.Unwrap(c) {
-		_, _ = fmt.Fprintf(w, "cause: %v\n", c)
+		_, _ = fmt.Fprintf(w, "cause: %s\n", causeLine(c.Error()))
 	}
+}
+
+func causeLine(s string) string {
+	s = format.Cell(s)
+	if len(s) <= maxCause {
+		return s
+	}
+	cut := maxCause
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "..."
 }
