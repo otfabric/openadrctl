@@ -34,7 +34,7 @@ $ openadrctl vtn start --config seed.yaml --store vtn.db --insecure-webhooks --w
 | `--mqtt-client-auth` | `anonymous` | How clients log in to the broker: `anonymous`, or `token`: the client ID as the user name and the client's OAuth2 token as the password, which the broker checks at `POST /auth/mqtt` (see [MQTT logins by token](#mqtt-logins-by-token)) |
 | `--websocket` | off | Notify over WebSockets (an extension of OpenLEADR and go-openadr) |
 | `--resource-groups` | off | Serve `/resourceGroups` (an extension) |
-| `--anonymous` | off | Answer requests without a token, for programs and events without targets |
+| `--anonymous` | off | Answer requests without a token, for programs and events without targets; a request with an empty `Authorization` header is answered 401 |
 | `--notify-reads` | off | Notify subscribers of `READ` when an object is read |
 | `--rate` | `0` | Requests a second each client may make, twice as many at once; the rest are answered 429. 0: no limit; a finite number |
 | `--token-ttl` | `1h` | Lifetime of the tokens the VTN issues |
@@ -154,12 +154,17 @@ $ echo $?
 
 | Mechanism | Flag | What clients do |
 |-----------|------|-----------------|
-| Webhook | `--webhooks`, `--insecure-webhooks` | Create a subscription with a `callbackUrl`; the VTN checks it can reach it, then posts notifications to it. With `--store`, a notification not yet delivered is sent after a restart |
+| Webhook | `--webhooks`, `--insecure-webhooks` | Create a subscription with a `callbackUrl`; the VTN checks it can reach it, then posts notifications to it. With `--store`, a notification not yet delivered is sent after a restart, with the subscription's current token; at most 10000 notifications or 64 MiB wait per client, and one past either is not sent |
 | MQTT | `--mqtt` | Read the broker from `GET /notifiers` and topics from `GET /notifiers/mqtt/topics/…`, and subscribe at the broker. The VTN publishes every change |
 | WebSocket | `--websocket` | Create a subscription with the WebSocket mechanism, and open the VTN's WebSocket (an extension) |
 
 `openadrctl ven listen` and `bl listen` do each of these; see the
 [guide](guide.md#8-notifications-websocket-webhook-mqtt).
+
+Webhooks go to each callback host one request at a time, and the hosts take
+turns: a slow callback holds up only its own notifications. Notifications to
+one callback URL keep their order; across URLs they may arrive in another
+order than they were sent.
 
 ### MQTT logins by token
 

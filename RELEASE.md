@@ -4,6 +4,29 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.8.0
+
+**Date:** 2026-11-15
+**Previous release:** v0.7.3
+
+No command or flag is added or changed.
+
+### Changed
+
+- Built on go-openadr v0.8.0 (was v0.7.3) (go-openadr RELEASE.md, v0.8.0). For the tool this means:
+  - `vtn start`: an update of a ven or resource by a VEN applies to the object as stored when its body has arrived, so it no longer restores what Business Logic changed meanwhile. For `PUT`, a body error (400, 413, 415) is answered before a 404 of the ID in the path.
+  - `vtn start --anonymous`: a request with a present but empty `Authorization` header is answered 401; only a request without the header is anonymous.
+  - `vtn start` with `--webhooks` or `--insecure-webhooks`: each callback host has one request on its way at a time and the hosts take turns, so a slow callback holds up only its own notifications. Notifications to one callback URL keep their order; across URLs they may arrive in another order than they were sent. The webhook client refuses more special-purpose address ranges unless `--insecure-webhooks` is given.
+  - `vtn start --store` with webhooks: at most 10000 notifications or 64 MiB wait per client to be sent; one past either is not recorded and a warning is logged. A recorded notification is sent with the subscription's current token, and given up once the subscription no longer names its callback URL.
+  - `vtn start`: answers about subscriptions are never compressed. A store file that holds a subscription whose program was deleted opens again.
+  - The client commands read `Retry-After` as whole seconds or an HTTP date only (a value such as `1.5` is ignored), and accept a token endpoint that sends `expires_in` as a string of digits.
+  - The commands that use a WebSocket answer a close with the peer's own code; a close frame that is not well formed ends the stream with an error.
+  - `discover` reads only answers from hosts on the link, keeps at most 64 VTNs, and bounds the names it reads.
+  - A notification whose 3.1.0 `operation` is not `CREATE`, `READ`, `UPDATE` or `DELETE`, or whose object names another `objectType`, and JSON with an unpaired surrogate escape are refused.
+- docs/server-config.md describes the empty `Authorization` header, the order of webhook deliveries and the bound on waiting notifications.
+
+---
+
 ## v0.7.3
 
 **Date:** 2026-11-14
