@@ -4,6 +4,19 @@ Releases are cut with the `Release` workflow (semantic versioning, annotated
 tag, GitHub release with binaries for every platform). The section of the
 version below, up to the `---` that ends it, is the release's notes.
 
+## v0.9.1
+
+**Date:** 2026-11-16
+**Previous release:** v0.9.0
+
+No command or flag is added or changed.
+
+### Changed
+
+- Built on go-openadr v0.9.0 (was v0.8.0) (go-openadr RELEASE.md, v0.9.0). Its `### Breaking` entry concerns a `Close` of `webhook.Sender` or `mqtt.Publisher` called from their own callbacks, which openadrctl does not make; the new `webhook.Handler.Logger` and `mqtt.LateAckMetrics` are not used, so nothing changes in the tool's output.
+
+---
+
 ## v0.9.0
 
 **Date:** 2026-11-15
